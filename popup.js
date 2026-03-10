@@ -12,7 +12,8 @@ const STORAGE_KEYS = {
 
 const MESSAGE_TYPES = {
   START_CAPTURE: "WEB2HTML_START_CAPTURE",
-  INJECT_TOOLBAR: "WEB2HTML_INJECT_TOOLBAR"
+  INJECT_TOOLBAR: "WEB2HTML_INJECT_TOOLBAR",
+  GET_LAST_CAPTURE_JSON: "WEB2HTML_GET_LAST_CAPTURE_JSON"
 };
 
 const DEFAULT_CONCURRENCY = "8";
@@ -21,6 +22,7 @@ const ALLOWED_CONCURRENCY = new Set(["4", "6", "8", "10", "12", "16", "20", "inf
 const proxyToggleEl = document.getElementById("assetProxyToggle");
 const concurrencyEl = document.getElementById("proxyConcurrency");
 const captureBtnEl = document.getElementById("captureBtn");
+const copyLastJsonBtnEl = document.getElementById("copyLastJsonBtn");
 const injectToolbarBtnEl = document.getElementById("injectToolbarBtn");
 const statusEl = document.getElementById("status");
 
@@ -37,6 +39,7 @@ function setStatus(message, isError = false) {
  */
 function setBusy(isBusy) {
   captureBtnEl.disabled = isBusy;
+  copyLastJsonBtnEl.disabled = isBusy;
   injectToolbarBtnEl.disabled = isBusy;
   captureBtnEl.textContent = isBusy ? "采集中..." : "开始采集并下载 JSON";
 }
@@ -121,6 +124,50 @@ async function captureCurrentPage() {
 }
 
 /**
+ * 复制文本到剪贴板，并提供降级方案兼容旧环境。
+ */
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  }
+}
+
+/**
+ * 复制最近一次采集 JSON，便于粘贴到 Figma 插件输入框。
+ */
+async function copyLastCapturedJson() {
+  setBusy(true);
+  setStatus("");
+
+  try {
+    const response = await sendMessage({ type: MESSAGE_TYPES.GET_LAST_CAPTURE_JSON });
+    if (!response?.ok || !response?.json) {
+      throw new Error(response?.error || "暂无可复制数据");
+    }
+
+    await copyToClipboard(response.json);
+    setStatus("已复制最近一次采集 JSON，可直接去 Figma 粘贴");
+    setTimeout(() => window.close(), 450);
+  } catch (error) {
+    setStatus(`复制失败：${String(error.message || error)}`, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/**
  * 向当前网页注入悬浮工具条。
  */
 async function injectToolbarToPage() {
@@ -161,6 +208,10 @@ async function initPopup() {
 
   captureBtnEl.addEventListener("click", () => {
     captureCurrentPage();
+  });
+
+  copyLastJsonBtnEl.addEventListener("click", () => {
+    copyLastCapturedJson();
   });
 
   injectToolbarBtnEl.addEventListener("click", () => {

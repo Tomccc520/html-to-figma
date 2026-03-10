@@ -14,7 +14,8 @@ const MESSAGE_TYPES = {
   START_CAPTURE: "WEB2HTML_START_CAPTURE",
   INJECT_TOOLBAR: "WEB2HTML_INJECT_TOOLBAR",
   FETCH_ASSET: "WEB2HTML_FETCH_ASSET",
-  GET_DIAGNOSTICS: "WEB2HTML_GET_DIAGNOSTICS"
+  GET_DIAGNOSTICS: "WEB2HTML_GET_DIAGNOSTICS",
+  GET_LAST_CAPTURE_JSON: "WEB2HTML_GET_LAST_CAPTURE_JSON"
 };
 
 const STORAGE_KEYS = {
@@ -39,6 +40,7 @@ let proxyMaxConcurrency = DEFAULT_CONCURRENCY;
 let proxySessionLoaded = false;
 let proxySessionCache = {};
 let proxyDiagnostics = [];
+let lastCapturedJson = "";
 
 /**
  * 休眠指定时间，用于等待页面渲染稳定。
@@ -330,18 +332,14 @@ async function runCapture(tabId) {
  */
 function saveResult(result) {
   const json = JSON.stringify(result, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
-  const objectUrl = URL.createObjectURL(blob);
+  const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
   const filename = `web2html-studio-${Date.now()}.json`;
 
   chrome.downloads.download(
     {
-      url: objectUrl,
+      url: dataUrl,
       filename,
       saveAs: true
-    },
-    () => {
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 3000);
     }
   );
 }
@@ -368,6 +366,7 @@ async function handleStartCapture(sendResponse) {
       throw new Error("采集结果为空，请刷新页面后重试");
     }
 
+    lastCapturedJson = JSON.stringify(captureResult, null, 2);
     saveResult(captureResult);
     sendResponse({ ok: true });
   } catch (error) {
@@ -428,6 +427,24 @@ async function handleGetDiagnostics(sendResponse) {
   });
 }
 
+/**
+ * 返回最近一次采集 JSON，供弹窗复制到剪贴板。
+ */
+function handleGetLastCaptureJson(sendResponse) {
+  if (!lastCapturedJson) {
+    sendResponse({
+      ok: false,
+      error: "暂无采集数据，请先执行一次“开始采集并下载 JSON”"
+    });
+    return;
+  }
+
+  sendResponse({
+    ok: true,
+    json: lastCapturedJson
+  });
+}
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") {
     return;
@@ -462,6 +479,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === MESSAGE_TYPES.GET_DIAGNOSTICS) {
     handleGetDiagnostics(sendResponse);
+    return true;
+  }
+
+  if (message.type === MESSAGE_TYPES.GET_LAST_CAPTURE_JSON) {
+    handleGetLastCaptureJson(sendResponse);
     return true;
   }
 
