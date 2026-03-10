@@ -41,7 +41,7 @@ function setBusy(isBusy) {
   captureBtnEl.disabled = isBusy;
   copyLastJsonBtnEl.disabled = isBusy;
   injectToolbarBtnEl.disabled = isBusy;
-  captureBtnEl.textContent = isBusy ? "采集中..." : "开始采集并下载 JSON";
+  captureBtnEl.textContent = isBusy ? "采集中..." : "复制到 Figma";
 }
 
 /**
@@ -103,7 +103,7 @@ function sendMessage(message) {
 }
 
 /**
- * 触发当前标签页采集并下载结果。
+ * 触发当前标签页采集，并自动复制结果到剪贴板。
  */
 async function captureCurrentPage() {
   setBusy(true);
@@ -114,7 +114,14 @@ async function captureCurrentPage() {
     if (!response?.ok) {
       throw new Error(response?.error || "未知错误");
     }
-    setStatus("采集成功，JSON 文件已开始下载");
+
+    const jsonResponse = await sendMessage({ type: MESSAGE_TYPES.GET_LAST_CAPTURE_JSON });
+    if (!jsonResponse?.ok || !jsonResponse?.json) {
+      throw new Error(jsonResponse?.error || "采集成功但读取 JSON 失败");
+    }
+
+    await copyToClipboard(jsonResponse.json);
+    setStatus("已复制到剪贴板，可去 Figma 粘贴；JSON 备份也已下载");
     setTimeout(() => window.close(), 600);
   } catch (error) {
     setStatus(`采集失败：${String(error.message || error)}`, true);

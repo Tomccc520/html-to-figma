@@ -6,6 +6,7 @@
  */
 
 const WORLD = "ISOLATED";
+const APP_VERSION = "1.0.1";
 const CAPTURE_ENGINE_FILE = "content.js";
 const CAPTURE_RUNNER_FILE = "runner.js";
 const TOOLBAR_FILE = "inpage-toolbar.js";
@@ -41,6 +42,8 @@ let proxySessionLoaded = false;
 let proxySessionCache = {};
 let proxyDiagnostics = [];
 let lastCapturedJson = "";
+
+console.log(`[Web2HTML Studio] background worker started, version=${APP_VERSION}`);
 
 /**
  * 休眠指定时间，用于等待页面渲染稳定。
