@@ -1,0 +1,52 @@
+<!--
+/**
+ * @copyright Tomda (https://www.tomda.top)
+ * @copyright UIED技术团队 (https://fsuied.com)
+ * @author UIED技术团队
+ * @createDate 2026-03-10
+ */
+-->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web2HTML Studio</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main class="panel">
+    <h1>Web2HTML Studio</h1>
+    <p class="desc">浏览网页后一键采集结构、样式与资源，导出可编辑设计数据 JSON。</p>
+
+    <label class="row" for="assetProxyToggle">
+      <span>跨域图片代理模式</span>
+      <input id="assetProxyToggle" type="checkbox" />
+    </label>
+
+    <label class="row" for="proxyConcurrency">
+      <span>图片采集并发</span>
+      <select id="proxyConcurrency">
+        <option value="4">4</option>
+        <option value="6">6</option>
+        <option value="8">8</option>
+        <option value="10">10</option>
+        <option value="12">12</option>
+        <option value="16">16</option>
+        <option value="20">20</option>
+        <option value="infinite">无限</option>
+      </select>
+    </label>
+
+    <p class="hint">默认建议关闭代理。遇到跨域丢图时再开启，并可将并发设置到 6~10 提升稳定性。</p>
+
+    <div class="actions">
+      <button id="captureBtn" type="button" class="primary">开始采集并下载 JSON</button>
+      <button id="injectToolbarBtn" type="button" class="secondary">注入网页悬浮工具条</button>
+    </div>
+
+    <p id="status" class="status" aria-live="polite"></p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

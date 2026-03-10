@@ -1,0 +1,113 @@
+/**
+ * @copyright Tomda (https://www.tomda.top)
+ * @copyright UIED技术团队 (https://fsuied.com)
+ * @author UIED技术团队
+ * @createDate 2026-03-10
+ */
+
+:root {
+  color-scheme: light;
+  font-family: "PingFang SC", "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 332px;
+  background: linear-gradient(180deg, #f7fafc 0%, #eef4ff 100%);
+  color: #1f2a37;
+}
+
+.panel {
+  padding: 14px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.desc {
+  margin: 0 0 12px;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.row select {
+  min-width: 92px;
+  border: 1px solid #d1d8e4;
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: #ffffff;
+}
+
+.hint {
+  margin: 2px 0 12px;
+  color: #596373;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.actions {
+  display: grid;
+  gap: 8px;
+}
+
+button {
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.64;
+  cursor: default;
+}
+
+.primary {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.primary:hover:enabled {
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.2);
+}
+
+.secondary {
+  background: #e8f3ff;
+  color: #155eef;
+}
+
+.secondary:hover:enabled {
+  box-shadow: 0 6px 14px rgba(21, 94, 239, 0.18);
+}
+
+.status {
+  min-height: 18px;
+  margin: 9px 0 0;
+  font-size: 12px;
+  color: #1f4d8d;
+}
+
+.status.is-error {
+  color: #b42318;
+}
