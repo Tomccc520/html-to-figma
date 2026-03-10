@@ -167,7 +167,7 @@
     section.id = TOOLBAR_ID;
     section.innerHTML = `
       <div class="head">
-        <span class="title">Web2HTML Studio</span>
+        <span class="title">Web to Design</span>
         <button class="close" id="web2htmlCloseBtn" type="button" title="关闭">×</button>
       </div>
       <div class="body">

@@ -11,12 +11,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Web2HTML Studio</title>
+  <title>Web to Design</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <main class="panel">
-    <h1>Web2HTML Studio</h1>
+    <div class="title-row">
+      <h1>Web to Design</h1>
+    </div>
     <p class="desc">浏览网页后一键采集结构、样式与资源，复制到 Figma 并下载 JSON 备份。</p>
 
     <label class="row" for="assetProxyToggle">
@@ -41,52 +43,49 @@
     <p class="hint">默认建议关闭代理。遇到跨域丢图时再开启，并可将并发设置到 6~10 提升稳定性。</p>
 
     <div class="actions">
-      <button id="captureBtn" type="button" class="primary">复制到 Figma</button>
+      <button id="copyToFigmaBtn" type="button" class="primary">复制到 Figma</button>
+      <button id="downloadJsonBtn" type="button" class="secondary">下载 JSON 文件</button>
       <button id="copyLastJsonBtn" type="button" class="secondary">仅复制最近一次 JSON</button>
       <button id="injectToolbarBtn" type="button" class="secondary">注入网页悬浮工具条</button>
     </div>
 
     <p id="status" class="status" aria-live="polite"></p>
+    <div id="toast" class="toast hidden" aria-live="polite"></div>
+    <p class="figma-tip">提示：点击“复制到 Figma”后，切换到 Figma 画布按 Command + V 即可粘贴。</p>
 
     <section class="portal-links">
-      <a class="portal-card" href="https://fsuied.com" target="_blank" rel="noopener noreferrer">
-        <span class="portal-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2zm6.93 9h-3.08a15.5 15.5 0 0 0-1.19-4.21A8.03 8.03 0 0 1 18.93 11zM12 4.08c.83 1.09 1.75 3.08 2.22 6.92H9.78c.47-3.84 1.39-5.83 2.22-6.92zM9.34 6.79A15.5 15.5 0 0 0 8.15 11H5.07a8.03 8.03 0 0 1 4.27-4.21zM4.26 13h3.89a15.5 15.5 0 0 0 1.19 4.21A8.03 8.03 0 0 1 4.26 13zm7.74 6.92c-.83-1.09-1.75-3.08-2.22-6.92h4.44c-.47 3.84-1.39 5.83-2.22 6.92zm2.66-2.71A15.5 15.5 0 0 0 15.85 13h3.89a8.03 8.03 0 0 1-5.08 4.21z"/></svg>
-        </span>
-        <span class="portal-meta">
-          <strong>AI交流社区</strong>
-          <small>fsuied.com</small>
-        </span>
-      </a>
+      <div class="portal-grid">
+        <a class="portal-card" href="https://fsuied.com" target="_blank" rel="noopener noreferrer" title="fsuied.com">
+          <span class="portal-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2zm6.93 9h-3.08a15.5 15.5 0 0 0-1.19-4.21A8.03 8.03 0 0 1 18.93 11zM12 4.08c.83 1.09 1.75 3.08 2.22 6.92H9.78c.47-3.84 1.39-5.83 2.22-6.92zM9.34 6.79A15.5 15.5 0 0 0 8.15 11H5.07a8.03 8.03 0 0 1 4.27-4.21zM4.26 13h3.89a15.5 15.5 0 0 0 1.19 4.21A8.03 8.03 0 0 1 4.26 13zm7.74 6.92c-.83-1.09-1.75-3.08-2.22-6.92h4.44c-.47 3.84-1.39 5.83-2.22 6.92zm2.66-2.71A15.5 15.5 0 0 0 15.85 13h3.89a8.03 8.03 0 0 1-5.08 4.21z"/></svg>
+          </span>
+          <span class="portal-label">AI交流社区</span>
+        </a>
 
-      <a class="portal-card" href="https://uied.cn" target="_blank" rel="noopener noreferrer">
-        <span class="portal-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M12 3 1 9l11 6 9-4.91V17h2V9zm0 14L5.5 13.45V17L12 21l6.5-4v-3.55z"/></svg>
-        </span>
-        <span class="portal-meta">
-          <strong>AI学习社区</strong>
-          <small>uied.cn</small>
-        </span>
-      </a>
+        <a class="portal-card" href="https://uied.cn" target="_blank" rel="noopener noreferrer" title="uied.cn">
+          <span class="portal-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3 1 9l11 6 9-4.91V17h2V9zm0 14L5.5 13.45V17L12 21l6.5-4v-3.55z"/></svg>
+          </span>
+          <span class="portal-label">AI学习社区</span>
+        </a>
 
-      <a class="portal-card" href="https://hao.uied.cn" target="_blank" rel="noopener noreferrer">
-        <span class="portal-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M3 4h8v8H3zm10 0h8v8h-8zM3 14h8v8H3zm10 0h8v8h-8z"/></svg>
-        </span>
-        <span class="portal-meta">
-          <strong>AI导航工具</strong>
-          <small>hao.uied.cn</small>
-        </span>
-      </a>
+        <a class="portal-card" href="https://hao.uied.cn" target="_blank" rel="noopener noreferrer" title="hao.uied.cn">
+          <span class="portal-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 4h8v8H3zm10 0h8v8h-8zM3 14h8v8H3zm10 0h8v8h-8z"/></svg>
+          </span>
+          <span class="portal-label">AI导航工具</span>
+        </a>
 
-      <div class="portal-card portal-dev-card">
-        <span class="portal-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/></svg>
-        </span>
-        <span class="portal-meta">
-          <strong>开发者</strong>
-          <small>Tomda</small>
-        </span>
+        <a class="portal-card" href="https://facomqeet1v.feishu.cn/wiki/LJL6wBolJiZPBEkFLhEc9ka2nxc?from=from_copylink" target="_blank" rel="noopener noreferrer" title="问题反馈">
+          <span class="portal-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2zm1 15h-2v-2h2zm2.07-7.75-.9.92A3.49 3.49 0 0 0 13 13h-2v-.5a2.5 2.5 0 0 1 .73-1.77l1.24-1.26a1.5 1.5 0 1 0-2.56-1.06H8.41a3.5 3.5 0 1 1 6.66 1.59z"/></svg>
+          </span>
+          <span class="portal-label">问题反馈</span>
+        </a>
+      </div>
+      <div class="portal-meta-row">
+        <span id="versionInfo" class="version">v--</span>
+        <p class="portal-dev">开发者：Tomda</p>
       </div>
     </section>
   </main>

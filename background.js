@@ -6,17 +6,23 @@
  */
 
 const WORLD = "ISOLATED";
-const APP_VERSION = "1.0.1";
-const CAPTURE_ENGINE_FILE = "content.js";
-const CAPTURE_RUNNER_FILE = "runner.js";
+const APP_VERSION = "1.0.3";
+const JSON_CAPTURE_ENGINE_FILE = "content.js";
+const JSON_CAPTURE_RUNNER_FILE = "runner.js";
+const FIGMA_CAPTURE_ENGINE_FILE = "capture.js";
+const FIGMA_CAPTURE_RUNNER_FILE = "figma-runner.js";
 const TOOLBAR_FILE = "inpage-toolbar.js";
 
 const MESSAGE_TYPES = {
   START_CAPTURE: "WEB2HTML_START_CAPTURE",
+  START_FIGMA_CLIPBOARD_CAPTURE: "WEB2HTML_START_FIGMA_CLIPBOARD_CAPTURE",
   INJECT_TOOLBAR: "WEB2HTML_INJECT_TOOLBAR",
   FETCH_ASSET: "WEB2HTML_FETCH_ASSET",
+  FETCH_ASSET_LEGACY: "FIGMA_CAPTURE_FETCH_ASSET",
   GET_DIAGNOSTICS: "WEB2HTML_GET_DIAGNOSTICS",
-  GET_LAST_CAPTURE_JSON: "WEB2HTML_GET_LAST_CAPTURE_JSON"
+  GET_DIAGNOSTICS_LEGACY: "FIGMA_CAPTURE_GET_DIAGNOSTICS",
+  GET_LAST_CAPTURE_JSON: "WEB2HTML_GET_LAST_CAPTURE_JSON",
+  GET_RUNTIME_INFO: "WEB2HTML_GET_RUNTIME_INFO"
 };
 
 const STORAGE_KEYS = {
@@ -42,8 +48,9 @@ let proxySessionLoaded = false;
 let proxySessionCache = {};
 let proxyDiagnostics = [];
 let lastCapturedJson = "";
+const workerBootAt = new Date().toISOString();
 
-console.log(`[Web2HTML Studio] background worker started, version=${APP_VERSION}`);
+console.log(`[Web to Design] background worker started, version=${APP_VERSION}`);
 
 /**
  * 休眠指定时间，用于等待页面渲染稳定。
@@ -91,9 +98,11 @@ function concurrencyLabel() {
 async function loadConcurrencyConfig() {
   try {
     const result = await chrome.storage.local.get({
-      [STORAGE_KEYS.PROXY_CONCURRENCY]: String(DEFAULT_CONCURRENCY)
+      [STORAGE_KEYS.PROXY_CONCURRENCY]: String(DEFAULT_CONCURRENCY),
+      proxyFetchConcurrency: String(DEFAULT_CONCURRENCY)
     });
-    proxyMaxConcurrency = normalizeConcurrency(result[STORAGE_KEYS.PROXY_CONCURRENCY]);
+    const nextConcurrency = result[STORAGE_KEYS.PROXY_CONCURRENCY] || result.proxyFetchConcurrency;
+    proxyMaxConcurrency = normalizeConcurrency(nextConcurrency);
   } catch {
     proxyMaxConcurrency = DEFAULT_CONCURRENCY;
   }
@@ -315,16 +324,32 @@ async function getActiveTab() {
 }
 
 /**
- * 运行采集流程，返回结构化设计数据。
+ * 运行 JSON 采集流程，返回结构化设计数据。
  */
-async function runCapture(tabId) {
-  await injectScriptFile(tabId, CAPTURE_ENGINE_FILE);
+async function runJsonCapture(tabId) {
+  await injectScriptFile(tabId, JSON_CAPTURE_ENGINE_FILE);
   await sleep(120);
 
   const [executionResult] = await chrome.scripting.executeScript({
     target: { tabId },
     world: WORLD,
-    files: [CAPTURE_RUNNER_FILE]
+    files: [JSON_CAPTURE_RUNNER_FILE]
+  });
+
+  return executionResult?.result;
+}
+
+/**
+ * 运行 Figma 剪贴板采集流程，直接生成 Figma 可粘贴的数据。
+ */
+async function runFigmaClipboardCapture(tabId) {
+  await injectScriptFile(tabId, FIGMA_CAPTURE_ENGINE_FILE);
+  await sleep(140);
+
+  const [executionResult] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: WORLD,
+    files: [FIGMA_CAPTURE_RUNNER_FILE]
   });
 
   return executionResult?.result;
@@ -335,16 +360,16 @@ async function runCapture(tabId) {
  */
 function saveResult(result) {
   const json = JSON.stringify(result, null, 2);
-  const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
-  const filename = `web2html-studio-${Date.now()}.json`;
+  const filename = `web-to-design-${Date.now()}.json`;
 
-  chrome.downloads.download(
-    {
-      url: dataUrl,
-      filename,
-      saveAs: true
+  // MV3 service worker 在部分环境不支持 URL.createObjectURL，这里使用 data URL 并保留兜底。
+  const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
+  chrome.downloads.download({ url: dataUrl, filename, saveAs: true }, () => {
+    const lastError = chrome.runtime.lastError;
+    if (lastError) {
+      console.error("[Web to Design] download failed:", lastError.message);
     }
-  );
+  });
 }
 
 /**
@@ -357,24 +382,64 @@ async function injectToolbar(tabId) {
 /**
  * 处理开始采集指令。
  */
-async function handleStartCapture(sendResponse) {
+async function handleStartCapture(message, sendResponse) {
   try {
     const activeTab = await getActiveTab();
     if (!activeTab?.id) {
       throw new Error("当前没有可采集的标签页");
     }
 
-    const captureResult = await runCapture(activeTab.id);
+    const captureResult = await runJsonCapture(activeTab.id);
     if (!captureResult) {
       throw new Error("采集结果为空，请刷新页面后重试");
     }
 
     lastCapturedJson = JSON.stringify(captureResult, null, 2);
-    saveResult(captureResult);
-    sendResponse({ ok: true });
+    const shouldDownload = message?.download !== false;
+    if (shouldDownload) {
+      saveResult(captureResult);
+    }
+    sendResponse({
+      ok: true,
+      downloaded: shouldDownload,
+      json: lastCapturedJson
+    });
   } catch (error) {
     console.error("Capture failed:", error);
-    sendResponse({ ok: false, error: String(error) });
+    sendResponse({
+      ok: false,
+      error: `[Web to Design v${APP_VERSION}] ${String(error?.message || error)}`,
+      stack: error?.stack || ""
+    });
+  }
+}
+
+/**
+ * 处理“复制到 Figma”指令，走参考仓库的剪贴板编码链路。
+ */
+async function handleStartFigmaClipboardCapture(sendResponse) {
+  try {
+    const activeTab = await getActiveTab();
+    if (!activeTab?.id) {
+      throw new Error("当前没有可采集的标签页");
+    }
+
+    const captureResult = await runFigmaClipboardCapture(activeTab.id);
+    if (captureResult?.success === false) {
+      throw new Error(captureResult?.error || "复制到 Figma 失败");
+    }
+
+    sendResponse({
+      ok: true,
+      result: captureResult || { success: true }
+    });
+  } catch (error) {
+    console.error("Figma clipboard capture failed:", error);
+    sendResponse({
+      ok: false,
+      error: `[Web to Design v${APP_VERSION}] ${String(error?.message || error)}`,
+      stack: error?.stack || ""
+    });
   }
 }
 
@@ -448,15 +513,29 @@ function handleGetLastCaptureJson(sendResponse) {
   });
 }
 
+/**
+ * 返回后台运行时信息，用于定位用户是否加载了旧插件代码。
+ */
+function handleGetRuntimeInfo(sendResponse) {
+  sendResponse({
+    ok: true,
+    app: "Web to Design",
+    version: APP_VERSION,
+    workerBootAt
+  });
+}
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") {
     return;
   }
-  if (!changes?.[STORAGE_KEYS.PROXY_CONCURRENCY]) {
+  const changedConcurrency = changes?.[STORAGE_KEYS.PROXY_CONCURRENCY]
+    || changes?.proxyFetchConcurrency;
+  if (!changedConcurrency) {
     return;
   }
 
-  proxyMaxConcurrency = normalizeConcurrency(changes[STORAGE_KEYS.PROXY_CONCURRENCY].newValue);
+  proxyMaxConcurrency = normalizeConcurrency(changedConcurrency.newValue);
   pumpProxyQueue();
 });
 
@@ -466,7 +545,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === MESSAGE_TYPES.START_CAPTURE) {
-    handleStartCapture(sendResponse);
+    handleStartCapture(message, sendResponse);
+    return true;
+  }
+
+  if (message.type === MESSAGE_TYPES.START_FIGMA_CLIPBOARD_CAPTURE) {
+    handleStartFigmaClipboardCapture(sendResponse);
     return true;
   }
 
@@ -475,18 +559,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === MESSAGE_TYPES.FETCH_ASSET && message.url) {
+  if (
+    (message.type === MESSAGE_TYPES.FETCH_ASSET
+      || message.type === MESSAGE_TYPES.FETCH_ASSET_LEGACY)
+    && message.url
+  ) {
     handleFetchAsset(message, sendResponse);
     return true;
   }
 
-  if (message.type === MESSAGE_TYPES.GET_DIAGNOSTICS) {
+  if (
+    message.type === MESSAGE_TYPES.GET_DIAGNOSTICS
+    || message.type === MESSAGE_TYPES.GET_DIAGNOSTICS_LEGACY
+  ) {
     handleGetDiagnostics(sendResponse);
     return true;
   }
 
   if (message.type === MESSAGE_TYPES.GET_LAST_CAPTURE_JSON) {
     handleGetLastCaptureJson(sendResponse);
+    return true;
+  }
+
+  if (message.type === MESSAGE_TYPES.GET_RUNTIME_INFO) {
+    handleGetRuntimeInfo(sendResponse);
     return true;
   }
 

@@ -365,7 +365,7 @@ async function buildEmbeddedAssets(assetUrls, options) {
     const embeddedAssets = await buildEmbeddedAssets(assetUrls, normalizedOptions);
 
     return {
-      app: "Web2HTML Studio",
+      app: "Web to Design",
       version: "1.0.0",
       capturedAt: new Date().toISOString(),
       meta: {

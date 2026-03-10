@@ -5,7 +5,7 @@
  * @createDate 2026-03-10
  */
 
-# Web2HTML Studio Chrome插件
+# Web to Design Chrome插件
 
 将网页内容捕获并转换为可编辑设计数据（面向 Figma/设计系统流程）。
 
@@ -29,7 +29,7 @@
 1. 点击浏览器工具栏中的插件图标
 2. 在弹窗中点击“开始采集并下载 JSON”
 3. 如需网页内操作，点击“注入网页悬浮工具条”
-4. 采集完成后会下载 `web2html-studio-*.json`
+4. 采集完成后会下载 `web-to-design-*.json`
 5. 将 JSON 用于 Figma 插件或内部设计转换流程
 
 ## 技术栈

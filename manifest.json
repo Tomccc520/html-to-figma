@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Web2HTML Studio",
-  "version": "1.0.1",
+  "name": "Web to Design",
+  "version": "1.0.3",
   "description": "智能捕获网页结构与样式，快速生成可编辑设计数据。© Tomda (https://www.tomda.top) / UIED技术团队 (https://fsuied.com)",
   "permissions": [
     "activeTab",
@@ -13,7 +13,7 @@
     "<all_urls>"
   ],
   "action": {
-    "default_title": "Web2HTML Studio",
+    "default_title": "Web to Design",
     "default_popup": "popup.html"
   },
   "background": {
@@ -24,6 +24,8 @@
       "resources": [
         "content.js",
         "runner.js",
+        "capture.js",
+        "figma-runner.js",
         "inpage-toolbar.js"
       ],
       "matches": [
