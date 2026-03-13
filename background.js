@@ -6,7 +6,7 @@
  */
 
 const WORLD = "ISOLATED";
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 const JSON_CAPTURE_ENGINE_FILE = "content.js";
 const JSON_CAPTURE_RUNNER_FILE = "runner.js";
 const FIGMA_CAPTURE_ENGINE_FILE = "capture.js";
@@ -16,6 +16,7 @@ const TOOLBAR_FILE = "inpage-toolbar.js";
 const MESSAGE_TYPES = {
   START_CAPTURE: "WEB2HTML_START_CAPTURE",
   START_FIGMA_CLIPBOARD_CAPTURE: "WEB2HTML_START_FIGMA_CLIPBOARD_CAPTURE",
+  START_COMPONENT_CAPTURE: "WEB2HTML_START_COMPONENT_CAPTURE",
   INJECT_TOOLBAR: "WEB2HTML_INJECT_TOOLBAR",
   FETCH_ASSET: "WEB2HTML_FETCH_ASSET",
   FETCH_ASSET_LEGACY: "FIGMA_CAPTURE_FETCH_ASSET",
@@ -326,7 +327,26 @@ async function getActiveTab() {
 /**
  * 运行 JSON 采集流程，返回结构化设计数据。
  */
-async function runJsonCapture(tabId) {
+async function runJsonCapture(tabId, captureOptions = {}) {
+  const nextOptions = {
+    selector: typeof captureOptions.selector === "string" ? captureOptions.selector : "body",
+    maxDepth: Number.isFinite(captureOptions.maxDepth) ? captureOptions.maxDepth : 20,
+    maxNodes: Number.isFinite(captureOptions.maxNodes) ? captureOptions.maxNodes : 5000,
+    embedAssets: captureOptions.embedAssets !== false,
+    assetConcurrency: Number.isFinite(captureOptions.assetConcurrency)
+      ? captureOptions.assetConcurrency
+      : DEFAULT_CONCURRENCY
+  };
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    world: WORLD,
+    func: (runtimeOptions) => {
+      window.__WEB2HTML_JSON_CAPTURE_OPTIONS__ = runtimeOptions;
+    },
+    args: [nextOptions]
+  });
+
   await injectScriptFile(tabId, JSON_CAPTURE_ENGINE_FILE);
   await sleep(120);
 
@@ -342,7 +362,23 @@ async function runJsonCapture(tabId) {
 /**
  * 运行 Figma 剪贴板采集流程，直接生成 Figma 可粘贴的数据。
  */
-async function runFigmaClipboardCapture(tabId) {
+async function runFigmaClipboardCapture(tabId, captureOptions = {}) {
+  const nextOptions = {
+    selector: typeof captureOptions.selector === "string" ? captureOptions.selector : "body",
+    delayMs: Number.isFinite(captureOptions.delayMs) ? captureOptions.delayMs : 0,
+    verbose: Boolean(captureOptions.verbose),
+    mode: captureOptions.mode || "smart"
+  };
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    world: WORLD,
+    func: (runtimeOptions) => {
+      window.__WEB2HTML_FIGMA_CAPTURE_OPTIONS__ = runtimeOptions;
+    },
+    args: [nextOptions]
+  });
+
   await injectScriptFile(tabId, FIGMA_CAPTURE_ENGINE_FILE);
   await sleep(140);
 
@@ -373,6 +409,55 @@ function saveResult(result) {
 }
 
 /**
+ * 规范化组件名称，尽量从页面标题生成稳定且可读的标识。
+ */
+function normalizeComponentName(rawName) {
+  const cleaned = String(rawName || "web-page")
+    .trim()
+    .replace(/[^\w\u4e00-\u9fa5\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 48);
+
+  if (!cleaned) {
+    return "web-page-component";
+  }
+  return `${cleaned.replace(/\s+/g, "-").toLowerCase()}-component`;
+}
+
+/**
+ * 将普通采集结果包装为组件化结构，便于后续在设计流程中复用。
+ */
+function buildComponentPayload(captureResult) {
+  const sourceTitle = captureResult?.meta?.title || "Web Page";
+  const sourceUrl = captureResult?.meta?.url || "";
+  const componentName = normalizeComponentName(sourceTitle);
+
+  return {
+    app: "Web to Design",
+    version: APP_VERSION,
+    format: "web2html.component+json",
+    exportedAt: new Date().toISOString(),
+    components: [
+      {
+        id: `${componentName}-${Date.now()}`,
+        name: componentName,
+        title: sourceTitle,
+        source: {
+          url: sourceUrl,
+          title: sourceTitle
+        },
+        stats: captureResult?.stats || {},
+        options: captureResult?.options || {},
+        frame: captureResult?.tree?.position || null,
+        tree: captureResult?.tree || null,
+        elements: captureResult?.elements || [],
+        assets: captureResult?.assets || { urls: [], embedded: {} }
+      }
+    ]
+  };
+}
+
+/**
  * 注入网页悬浮工具条。
  */
 async function injectToolbar(tabId) {
@@ -389,7 +474,15 @@ async function handleStartCapture(message, sendResponse) {
       throw new Error("当前没有可采集的标签页");
     }
 
-    const captureResult = await runJsonCapture(activeTab.id);
+    const captureResult = await runJsonCapture(activeTab.id, {
+      selector: message?.selector || "body",
+      maxDepth: Number.isFinite(message?.maxDepth) ? message.maxDepth : 20,
+      maxNodes: Number.isFinite(message?.maxNodes) ? message.maxNodes : 5000,
+      embedAssets: message?.embedAssets !== false,
+      assetConcurrency: Number.isFinite(message?.assetConcurrency)
+        ? message.assetConcurrency
+        : DEFAULT_CONCURRENCY
+    });
     if (!captureResult) {
       throw new Error("采集结果为空，请刷新页面后重试");
     }
@@ -417,14 +510,19 @@ async function handleStartCapture(message, sendResponse) {
 /**
  * 处理“复制到 Figma”指令，走参考仓库的剪贴板编码链路。
  */
-async function handleStartFigmaClipboardCapture(sendResponse) {
+async function handleStartFigmaClipboardCapture(message, sendResponse) {
   try {
     const activeTab = await getActiveTab();
     if (!activeTab?.id) {
       throw new Error("当前没有可采集的标签页");
     }
 
-    const captureResult = await runFigmaClipboardCapture(activeTab.id);
+    const captureResult = await runFigmaClipboardCapture(activeTab.id, {
+      selector: message?.selector || "body",
+      delayMs: Number.isFinite(message?.delayMs) ? message.delayMs : 0,
+      verbose: Boolean(message?.verbose),
+      mode: message?.mode || "smart"
+    });
     if (captureResult?.success === false) {
       throw new Error(captureResult?.error || "复制到 Figma 失败");
     }
@@ -435,6 +533,43 @@ async function handleStartFigmaClipboardCapture(sendResponse) {
     });
   } catch (error) {
     console.error("Figma clipboard capture failed:", error);
+    sendResponse({
+      ok: false,
+      error: `[Web to Design v${APP_VERSION}] ${String(error?.message || error)}`,
+      stack: error?.stack || ""
+    });
+  }
+}
+
+/**
+ * 处理“复制组件 JSON”指令，输出组件化结构的采集结果。
+ */
+async function handleStartComponentCapture(sendResponse) {
+  try {
+    const activeTab = await getActiveTab();
+    if (!activeTab?.id) {
+      throw new Error("当前没有可采集的标签页");
+    }
+
+    const captureResult = await runJsonCapture(activeTab.id, {
+      selector: "body",
+      maxDepth: 20,
+      maxNodes: 5000,
+      embedAssets: true,
+      assetConcurrency: DEFAULT_CONCURRENCY
+    });
+    if (!captureResult) {
+      throw new Error("采集结果为空，请刷新页面后重试");
+    }
+
+    const componentPayload = buildComponentPayload(captureResult);
+    const componentJson = JSON.stringify(componentPayload, null, 2);
+    sendResponse({
+      ok: true,
+      json: componentJson
+    });
+  } catch (error) {
+    console.error("Component capture failed:", error);
     sendResponse({
       ok: false,
       error: `[Web to Design v${APP_VERSION}] ${String(error?.message || error)}`,
@@ -550,7 +685,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === MESSAGE_TYPES.START_FIGMA_CLIPBOARD_CAPTURE) {
-    handleStartFigmaClipboardCapture(sendResponse);
+    handleStartFigmaClipboardCapture(message, sendResponse);
+    return true;
+  }
+
+  if (message.type === MESSAGE_TYPES.START_COMPONENT_CAPTURE) {
+    handleStartComponentCapture(sendResponse);
     return true;
   }
 

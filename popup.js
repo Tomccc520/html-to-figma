@@ -18,9 +18,19 @@ const LEGACY_STORAGE_KEYS = {
 const MESSAGE_TYPES = {
   START_CAPTURE: "WEB2HTML_START_CAPTURE",
   START_FIGMA_CLIPBOARD_CAPTURE: "WEB2HTML_START_FIGMA_CLIPBOARD_CAPTURE",
+  START_COMPONENT_CAPTURE: "WEB2HTML_START_COMPONENT_CAPTURE",
   INJECT_TOOLBAR: "WEB2HTML_INJECT_TOOLBAR",
   GET_LAST_CAPTURE_JSON: "WEB2HTML_GET_LAST_CAPTURE_JSON",
   GET_RUNTIME_INFO: "WEB2HTML_GET_RUNTIME_INFO"
+};
+
+const BUTTON_TEXT = {
+  COPY_SMART_TO_FIGMA: "智能复制到 Figma",
+  COPY_FULL_PAGE_TO_FIGMA: "整页复制到 Figma",
+  DOWNLOAD_JSON: "下载 JSON 文件",
+  COPY_LAST_JSON: "仅复制最近一次 JSON",
+  COPY_COMPONENT_JSON: "复制组件 JSON",
+  INJECT_TOOLBAR: "注入网页悬浮工具条"
 };
 
 const DEFAULT_CONCURRENCY = "8";
@@ -29,8 +39,10 @@ const ALLOWED_CONCURRENCY = new Set(["4", "6", "8", "10", "12", "16", "20", "inf
 const proxyToggleEl = document.getElementById("assetProxyToggle");
 const concurrencyEl = document.getElementById("proxyConcurrency");
 const copyToFigmaBtnEl = document.getElementById("copyToFigmaBtn");
+const copyFullPageToFigmaBtnEl = document.getElementById("copyFullPageToFigmaBtn");
 const downloadJsonBtnEl = document.getElementById("downloadJsonBtn");
 const copyLastJsonBtnEl = document.getElementById("copyLastJsonBtn");
+const copyComponentJsonBtnEl = document.getElementById("copyComponentJsonBtn");
 const injectToolbarBtnEl = document.getElementById("injectToolbarBtn");
 const statusEl = document.getElementById("status");
 const toastEl = document.getElementById("toast");
@@ -51,11 +63,17 @@ function setStatus(message, isError = false, isSuccess = false) {
  */
 function setBusy(isBusy) {
   copyToFigmaBtnEl.disabled = isBusy;
+  copyFullPageToFigmaBtnEl.disabled = isBusy;
   downloadJsonBtnEl.disabled = isBusy;
   copyLastJsonBtnEl.disabled = isBusy;
+  copyComponentJsonBtnEl.disabled = isBusy;
   injectToolbarBtnEl.disabled = isBusy;
-  copyToFigmaBtnEl.textContent = isBusy ? "处理中..." : "复制到 Figma";
-  downloadJsonBtnEl.textContent = isBusy ? "处理中..." : "下载 JSON 文件";
+  copyToFigmaBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.COPY_SMART_TO_FIGMA;
+  copyFullPageToFigmaBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.COPY_FULL_PAGE_TO_FIGMA;
+  downloadJsonBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.DOWNLOAD_JSON;
+  copyLastJsonBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.COPY_LAST_JSON;
+  copyComponentJsonBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.COPY_COMPONENT_JSON;
+  injectToolbarBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.INJECT_TOOLBAR;
 }
 
 /**
@@ -155,7 +173,9 @@ async function captureAndCopyToFigma() {
 
   try {
     const response = await sendMessage({
-      type: MESSAGE_TYPES.START_FIGMA_CLIPBOARD_CAPTURE
+      type: MESSAGE_TYPES.START_FIGMA_CLIPBOARD_CAPTURE,
+      selector: "body",
+      mode: "smart"
     });
     if (!response?.ok) {
       throw new Error(response?.error || "未知错误");
@@ -171,6 +191,38 @@ async function captureAndCopyToFigma() {
   } catch (error) {
     setStatus(`复制到 Figma 失败：${String(error.message || error)}`, true);
     showToast("复制失败，请刷新页面重试", true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/**
+ * 整页采集并写入 Figma 可识别剪贴板，明确触发“整个页面”路径。
+ */
+async function captureFullPageAndCopyToFigma() {
+  setBusy(true);
+  setStatus("");
+
+  try {
+    const response = await sendMessage({
+      type: MESSAGE_TYPES.START_FIGMA_CLIPBOARD_CAPTURE,
+      selector: "body",
+      mode: "full_page"
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "未知错误");
+    }
+
+    if (response?.result?.pending) {
+      setStatus("已触发整页复制流程，页面仍在处理，请稍后到 Figma 画布按 Command + V 粘贴。", false, true);
+      showToast("整页复制流程已启动");
+    } else {
+      setStatus("整页复制成功。请切换到 Figma 画布后按 Command + V 粘贴。", false, true);
+      showToast("整页已复制到 Figma");
+    }
+  } catch (error) {
+    setStatus(`整页复制失败：${String(error.message || error)}`, true);
+    showToast("整页复制失败，请刷新页面重试", true);
   } finally {
     setBusy(false);
   }
@@ -197,6 +249,30 @@ async function captureAndDownloadJson() {
   } catch (error) {
     setStatus(`下载 JSON 失败：${String(error.message || error)}`, true);
     showToast("下载失败", true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/**
+ * 采集并复制组件版 JSON，便于后续在设计转换流程中识别组件结构。
+ */
+async function captureAndCopyComponentJson() {
+  setBusy(true);
+  setStatus("");
+
+  try {
+    const response = await sendMessage({ type: MESSAGE_TYPES.START_COMPONENT_CAPTURE });
+    if (!response?.ok || !response?.json) {
+      throw new Error(response?.error || "组件 JSON 生成失败");
+    }
+
+    await copyToClipboard(response.json);
+    setStatus("组件 JSON 已复制，可直接粘贴到设计转换流程。", false, true);
+    showToast("组件 JSON 复制成功");
+  } catch (error) {
+    setStatus(`复制组件 JSON 失败：${String(error.message || error)}`, true);
+    showToast("组件 JSON 复制失败", true);
   } finally {
     setBusy(false);
   }
@@ -309,12 +385,20 @@ async function initPopup() {
     captureAndCopyToFigma();
   });
 
+  copyFullPageToFigmaBtnEl.addEventListener("click", () => {
+    captureFullPageAndCopyToFigma();
+  });
+
   downloadJsonBtnEl.addEventListener("click", () => {
     captureAndDownloadJson();
   });
 
   copyLastJsonBtnEl.addEventListener("click", () => {
     copyLastCapturedJson();
+  });
+
+  copyComponentJsonBtnEl.addEventListener("click", () => {
+    captureAndCopyComponentJson();
   });
 
   injectToolbarBtnEl.addEventListener("click", () => {

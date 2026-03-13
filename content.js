@@ -366,7 +366,7 @@ async function buildEmbeddedAssets(assetUrls, options) {
 
     return {
       app: "Web to Design",
-      version: "1.0.0",
+      version: "1.0.4",
       capturedAt: new Date().toISOString(),
       meta: {
         title: document.title,

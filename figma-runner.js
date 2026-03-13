@@ -7,6 +7,19 @@
 
 (async () => {
   /**
+   * 读取后台注入的运行参数，并在读取后立即清理全局变量。
+   */
+  function readRuntimeOptions() {
+    const options = window.__WEB2HTML_FIGMA_CAPTURE_OPTIONS__ || {};
+    try {
+      delete window.__WEB2HTML_FIGMA_CAPTURE_OPTIONS__;
+    } catch {
+      window.__WEB2HTML_FIGMA_CAPTURE_OPTIONS__ = undefined;
+    }
+    return options;
+  }
+
+  /**
    * 等待指定毫秒，给页面渲染和资源加载预留时间。
    */
   function wait(ms) {
@@ -77,13 +90,26 @@
       throw new Error("window.figma.captureForDesign 不存在，请确认 capture.js 已注入");
     }
 
+    const runtimeOptions = readRuntimeOptions();
+    const selector = typeof runtimeOptions.selector === "string" ? runtimeOptions.selector : "body";
+    const delayMs = Number.isFinite(runtimeOptions.delayMs) ? Math.max(0, runtimeOptions.delayMs) : 0;
+    const captureMode = typeof runtimeOptions.mode === "string" ? runtimeOptions.mode : "smart";
+    const verbose = Boolean(runtimeOptions.verbose);
+
+    if (verbose) {
+      console.log("[Web to Design] figma capture options:", { selector, delayMs, captureMode });
+    }
+
     await warmupPageByScroll();
     await waitForImages();
     await waitForFonts();
-    await wait(800);
+    await wait(captureMode === "full_page" ? 1000 : 800);
+    if (delayMs > 0) {
+      await wait(delayMs);
+    }
 
     // 不传 endpoint/captureId 时，capture.js 走“复制到剪贴板”模式。
-    const capturePromise = Promise.resolve(captureForDesign({ selector: "body" }));
+    const capturePromise = Promise.resolve(captureForDesign({ selector, delayMs, verbose }));
     capturePromise.catch((error) => {
       console.error("[Web to Design] Figma clipboard capture failed:", error);
     });
