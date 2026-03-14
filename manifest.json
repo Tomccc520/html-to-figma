@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Web to Design",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "智能捕获网页结构与样式，快速生成可编辑设计数据。© Tomda (https://www.tomda.top) / UIED技术团队 (https://fsuied.com)",
   "permissions": [
     "activeTab",
     "scripting",
     "downloads",
-    "storage"
+    "storage",
+    "windows"
   ],
   "host_permissions": [
     "<all_urls>"

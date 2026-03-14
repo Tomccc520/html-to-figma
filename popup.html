@@ -43,17 +43,21 @@
     <p class="hint">默认建议关闭代理。遇到跨域丢图时再开启，并可将并发设置到 6~10 提升稳定性。</p>
 
     <div class="actions">
-      <button id="copyToFigmaBtn" type="button" class="primary">智能复制到 Figma</button>
-      <button id="copyFullPageToFigmaBtn" type="button" class="secondary">整页复制到 Figma</button>
-      <button id="downloadJsonBtn" type="button" class="secondary">下载 JSON 文件</button>
-      <button id="copyLastJsonBtn" type="button" class="secondary">仅复制最近一次 JSON</button>
-      <button id="copyComponentJsonBtn" type="button" class="secondary">复制组件 JSON</button>
-      <button id="injectToolbarBtn" type="button" class="secondary">注入网页悬浮工具条</button>
+      <button id="copyToFigmaBtn" type="button" class="primary">打开黑色悬浮条（推荐）</button>
+      <button id="downloadJsonBtn" type="button" class="secondary">下载 JSON 文件（备份）</button>
     </div>
+
+    <details class="advanced">
+      <summary>高级操作</summary>
+      <div class="actions actions-advanced">
+        <button id="copyLastJsonBtn" type="button" class="secondary">仅复制最近一次 JSON</button>
+        <button id="injectToolbarBtn" type="button" class="secondary">注入网页悬浮工具条（旧版）</button>
+      </div>
+    </details>
 
     <p id="status" class="status" aria-live="polite"></p>
     <div id="toast" class="toast hidden" aria-live="polite"></div>
-    <p class="figma-tip">提示：点击“复制到 Figma”后，切换到 Figma 画布按 Command + V 即可粘贴。</p>
+    <p class="figma-tip">提示：点击“打开黑色悬浮条”后，可继续选择“整个屏幕 / 选择元素 / 复制组件 / 视口尺寸”。</p>
 
     <section class="portal-links">
       <div class="portal-grid">
