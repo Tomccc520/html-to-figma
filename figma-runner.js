@@ -113,7 +113,10 @@
   function buildModeHintText() {
     const preset = getActiveViewportPreset();
     const modeLockText = activeModeLock ? `锁定：${activeModeLock}` : "锁定：关闭";
-    return `当前模式：${activeMode} | ${modeLockText} | 预设：${preset.label} ${preset.width}x${preset.height}`;
+    const selectorText = activeSelector && activeSelector !== "body"
+      ? ` | 目标：${activeSelector.slice(0, 48)}`
+      : "";
+    return `当前模式：${activeMode} | ${modeLockText} | 预设：${preset.label} ${preset.width}x${preset.height}${selectorText}`;
   }
 
   /**
@@ -542,7 +545,15 @@
           }
 
           try {
-            await runComponentCapture(activeSelector || "body", activeSelector === "body" ? "component_page" : "component_element");
+            const selector = activeSelector || "body";
+            if (selector === "body") {
+              if (labelEl) {
+                labelEl.textContent = "先选元素";
+              }
+              setActiveMode("组件需先选元素");
+              return;
+            }
+            await runComponentCapture(selector, "component_element");
             if (labelEl) {
               labelEl.textContent = "已复制组件";
             }
@@ -659,6 +670,83 @@
   }
 
   /**
+   * 创建图标+文本按钮，用于黑色悬浮条的精简交互模式。
+   */
+  function createLauncherIconButton({ label, path, onClick, ariaLabel }) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("data-icon-button", "1");
+    button.setAttribute("aria-label", ariaLabel || label);
+    button.style.cssText = [
+      "display:inline-flex",
+      "align-items:center",
+      "justify-content:center",
+      "height:24px",
+      "padding:0 8px 0 4px",
+      "border:none",
+      "border-radius:5px",
+      "background:transparent",
+      "color:rgba(255,255,255,.9)",
+      "font-family:inherit",
+      "font-size:inherit",
+      "font-weight:inherit",
+      "line-height:inherit",
+      "letter-spacing:inherit",
+      "cursor:pointer",
+      "white-space:nowrap",
+      "transition:background .1s"
+    ].join(";");
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.style.cssText = "width:24px;height:24px;flex-shrink:0;";
+
+    const iconPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    iconPath.setAttribute("d", path);
+    iconPath.setAttribute("fill", "rgba(255,255,255,.9)");
+    iconPath.setAttribute("fill-rule", "evenodd");
+    iconPath.setAttribute("clip-rule", "evenodd");
+    svg.appendChild(iconPath);
+
+    const text = document.createElement("span");
+    text.setAttribute("data-toolbar-label", "1");
+    text.style.cssText = "margin-left:4px;";
+    text.textContent = label;
+
+    button.addEventListener("mouseenter", () => {
+      button.style.background = "rgba(255,255,255,.14)";
+    });
+    button.addEventListener("mouseleave", () => {
+      if (button.getAttribute("data-active") === "1") {
+        button.style.background = "rgba(255,255,255,.22)";
+      } else {
+        button.style.background = "transparent";
+      }
+    });
+    button.addEventListener("click", onClick);
+
+    button.appendChild(svg);
+    if (label) {
+      button.appendChild(text);
+    }
+    return button;
+  }
+
+  /**
+   * 更新图标按钮文案，不破坏图标节点。
+   */
+  function setLauncherIconButtonLabel(button, label) {
+    if (!button) {
+      return;
+    }
+    const labelEl = button.querySelector("[data-toolbar-label]");
+    if (labelEl) {
+      labelEl.textContent = label;
+    }
+  }
+
+  /**
    * 打开手动黑色悬浮条：先选功能，再开始采集。
    */
   function showManualLauncher(captureForDesign, runtimeOptions) {
@@ -710,30 +798,21 @@
     const divider2 = document.createElement("div");
     divider2.style.cssText = "width:1px;align-self:stretch;background:rgba(255,255,255,.1);flex-shrink:0;";
 
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.setAttribute("aria-label", "关闭");
-    closeButton.textContent = "×";
-    closeButton.style.cssText = [
-      "display:inline-flex",
-      "align-items:center",
-      "justify-content:center",
-      "width:24px",
-      "height:24px",
-      "padding:0",
-      "border:none",
-      "border-radius:5px",
-      "background:transparent",
-      "color:rgba(255,255,255,.9)",
-      "cursor:pointer",
-      "font-size:18px",
-      "margin-left:8px"
-    ].join(";");
-
-    closeButton.addEventListener("click", () => {
-      removeManualLauncher();
+    const closeButton = createLauncherIconButton({
+      label: "",
+      ariaLabel: "关闭",
+      path: "M17.354 6.646a.5.5 0 0 1 0 .708L12.707 12l4.647 4.646a.5.5 0 0 1-.708.708L12 12.707l-4.646 4.647a.5.5 0 0 1-.708-.708L11.293 12 6.646 7.354a.5.5 0 0 1 .708-.707L12 11.293l4.646-4.647a.5.5 0 0 1 .708 0",
+      onClick: () => {
+        removeManualLauncher();
+      }
     });
+    closeButton.style.padding = "0";
+    closeButton.style.width = "24px";
+    closeButton.style.marginLeft = "8px";
 
+    /**
+     * 执行复制到 Figma 的采集动作，执行时会关闭手动条并清理内置条。
+     */
     const runClipboardCapture = async (selector, modeLabel) => {
       setActiveMode(modeLabel);
       activeSelector = selector || "body";
@@ -753,92 +832,169 @@
       }
     };
 
-    const fullPageButton = createLauncherButton("整个屏幕", () => {
+    /**
+     * 当前待执行动作：figma_page=整页复制，figma_element=元素复制，component_element=组件复制。
+     */
+    let pendingAction = "figma_page";
+    let pendingSelector = "body";
+    let runActionButtonEl = null;
+    const modeButtonMap = {};
+
+    /**
+     * 刷新执行按钮文案，明确当前点击后会发生什么。
+     */
+    const refreshRunActionButton = () => {
+      if (!runActionButtonEl) {
+        return;
+      }
+      if (pendingAction === "figma_page") {
+        setLauncherIconButtonLabel(runActionButtonEl, "执行 复制整页");
+        return;
+      }
+      if (pendingAction === "figma_element") {
+        setLauncherIconButtonLabel(runActionButtonEl, pendingSelector === "body" ? "先选元素" : "执行 复制元素");
+        return;
+      }
+      setLauncherIconButtonLabel(runActionButtonEl, pendingSelector === "body" ? "先选组件元素" : "执行 复制组件");
+    };
+
+    /**
+     * 统一更新待执行动作与目标选择器，降低多个按钮之间状态混乱。
+     */
+    const setPendingAction = (nextAction, selector, modeLabel) => {
+      pendingAction = nextAction;
+      pendingSelector = selector || "body";
+      activeSelector = pendingSelector;
+      setActiveMode(modeLabel);
+      refreshRunActionButton();
+      Object.entries(modeButtonMap).forEach(([key, button]) => {
+        if (!button) {
+          return;
+        }
+        const active = key === pendingAction;
+        button.setAttribute("data-active", active ? "1" : "0");
+        button.style.background = active ? "rgba(255,255,255,.22)" : "transparent";
+      });
+    };
+
+    const fullPageButton = createLauncherIconButton({
+      label: "整个屏幕",
+      path: "M17 6a2 2 0 0 1 2 2v8l-.01.204a2 2 0 0 1-1.786 1.785L17 18H7l-.204-.01a2 2 0 0 1-1.785-1.786L5 16V8a2 2 0 0 1 2-2zM6 16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5H6zm1-9a1 1 0 0 0-.995.897L6 8v2h12V8a1 1 0 0 0-1-1zm.5 1a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1m2 0a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1",
+      onClick: () => {
       if (!isModeAllowed("整页")) {
         notifyModeBlocked("整页");
         return;
       }
-      runClipboardCapture("body", "整页");
+      setPendingAction("figma_page", "body", "整页");
+      }
     });
+    modeButtonMap.figma_page = fullPageButton;
 
-    const backButton = createLauncherButton("返回", () => {
-      activeSelector = "body";
-      setActiveMode("待选择");
-    });
-
-    const selectElementButton = createLauncherButton("选择元素", () => {
+    const selectElementButton = createLauncherIconButton({
+      label: "选择元素",
+      path: "M9.321 5.532a.5.5 0 0 1 .653.27l.777 1.876c.102.245-.039.524-.285.626s-.537.002-.639-.244L9.05 6.186a.5.5 0 0 1 .271-.654m-1.26 4.295L6.186 9.05a.5.5 0 0 0-.383.924l1.875.777c.246.101.524-.04.626-.285.102-.246.003-.537-.243-.64m-.383 3.422-1.875.776a.5.5 0 1 0 .383.924l1.875-.777c.246-.102.345-.393.243-.639s-.38-.386-.626-.284m2.149 2.69-.777 1.874a.5.5 0 0 0 .924.383l.777-1.875c.102-.245-.04-.524-.285-.626s-.537-.002-.639.244m6.495-5.188 1.874-.777a.5.5 0 1 0-.382-.924l-1.875.777c-.246.101-.346.393-.244.639s.381.386.627.285m-2.15-2.69.777-1.875a.5.5 0 1 0-.924-.383l-.776 1.875c-.102.245.039.524.284.626.246.102.538.002.64-.244m-1.82 3.002a1 1 0 0 0-1.288 1.288l2.25 6a1 1 0 0 0 1.906-.109l.605-2.418 2.418-.604a1 1 0 0 0 .108-1.907zm3.94 3.614L15 15l-.323 1.29L14.25 18l-.618-1.65-1.166-3.108L12 12l1.243.466 3.108 1.165L18 14.25z",
+      onClick: () => {
       if (!isModeAllowed("元素")) {
         notifyModeBlocked("元素");
         return;
       }
-      setActiveMode("元素选择中");
+      setPendingAction("figma_element", "body", "元素选择中");
       startElementPicker(
         (selector) => {
-          activeSelector = selector;
-          runClipboardCapture(selector, "元素");
+          setPendingAction("figma_element", selector, "元素");
         },
         () => {
-          setActiveMode("待选择");
+          setActiveMode("元素未选择");
+          refreshRunActionButton();
         }
       );
+      }
     });
+    modeButtonMap.figma_element = selectElementButton;
 
-    const componentButton = createLauncherButton("复制组件", async () => {
+    const componentButton = createLauncherIconButton({
+      label: "复制组件",
+      path: "M10.5 4a1 1 0 0 1 1 1v1h1a2.5 2.5 0 0 1 2.45 2h1.05a1 1 0 1 1 0 2H15v2h1a1 1 0 1 1 0 2H15a2.5 2.5 0 0 1-2.5 2.5h-1V18a1 1 0 1 1-2 0v-1.5h-1A2.5 2.5 0 0 1 6 14V8a2.5 2.5 0 0 1 2.5-2h1V5a1 1 0 0 1 1-1m-2 4a.5.5 0 0 0-.5.5V14a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5V8.5a.5.5 0 0 0-.5-.5z",
+      onClick: () => {
       if (!isModeAllowed("组件")) {
         notifyModeBlocked("组件");
         return;
       }
+      setPendingAction("component_element", "body", "组件选择中");
+      startElementPicker(
+        (selector) => {
+          setPendingAction("component_element", selector, "组件");
+        },
+        () => {
+          setActiveMode("组件未选择");
+          refreshRunActionButton();
+        }
+      );
+      }
+    });
+    modeButtonMap.component_element = componentButton;
 
-      const button = componentButton;
-      button.disabled = true;
-      setActiveMode("组件");
-      button.textContent = "生成中...";
+    runActionButtonEl = createLauncherIconButton({
+      label: "执行",
+      path: "M8.5 6.5a1 1 0 0 1 1.555-.832l6 4a1 1 0 0 1 0 1.664l-6 4A1 1 0 0 1 8.5 14.5z",
+      onClick: async () => {
+      if (pendingAction === "figma_page") {
+        if (!isModeAllowed("整页")) {
+          notifyModeBlocked("整页");
+          return;
+        }
+        await runClipboardCapture("body", "整页");
+        return;
+      }
+
+      if (pendingAction === "figma_element") {
+        if (!isModeAllowed("元素")) {
+          notifyModeBlocked("元素");
+          return;
+        }
+        if (!pendingSelector || pendingSelector === "body") {
+          setActiveMode("请先点元素模式并选择元素");
+          refreshRunActionButton();
+          setTimeout(refreshModeHint, 1200);
+          return;
+        }
+        await runClipboardCapture(pendingSelector, "元素");
+        return;
+      }
+
+      if (!isModeAllowed("组件")) {
+        notifyModeBlocked("组件");
+        return;
+      }
+      if (!pendingSelector || pendingSelector === "body") {
+        setActiveMode("请先点击复制组件并选择元素");
+        refreshRunActionButton();
+        setTimeout(refreshModeHint, 1200);
+        return;
+      }
+
+      runActionButtonEl.disabled = true;
+      setLauncherIconButtonLabel(runActionButtonEl, "组件生成中...");
       try {
-        const selector = activeSelector || "body";
-        await runComponentCapture(selector, selector === "body" ? "component_page" : "component_element");
-        button.textContent = "已复制组件";
+        removeManualLauncher();
+        await runComponentCapture(pendingSelector, "component_element");
       } catch (error) {
         console.error("[Web to Design] component copy failed:", error);
-        button.textContent = "复制失败";
+        setActiveMode("组件复制失败");
       } finally {
-        setTimeout(() => {
-          button.disabled = false;
-          button.textContent = "复制组件";
-          refreshModeHint();
-        }, 1200);
+        if (runActionButtonEl) {
+          runActionButtonEl.disabled = false;
+          refreshRunActionButton();
+        }
+        refreshModeHint();
       }
-    });
-
-    launcherPresetButtonEl = createLauncherButton(`预设 ${getActiveViewportPreset().label}`, async () => {
-      const preset = switchToNextViewportPreset();
-      setActiveMode("视口预设");
-      try {
-        await applyActiveViewportPreset();
-        await copyActivePresetSize();
-        launcherPresetButtonEl.textContent = `已应用 ${preset.label}`;
-      } catch (error) {
-        console.error("[Web to Design] viewport preset copy failed:", error);
-        launcherPresetButtonEl.textContent = "应用失败";
-      } finally {
-        setTimeout(() => {
-          if (launcherPresetButtonEl) {
-            launcherPresetButtonEl.textContent = `预设 ${getActiveViewportPreset().label}`;
-          }
-          refreshModeHint();
-        }, 1000);
       }
-    });
-
-    launcherLockButtonEl = createLauncherButton(activeModeLock ? `锁定 ${activeModeLock}` : "锁定 关闭", () => {
-      cycleModeLock();
     });
 
     group.appendChild(fullPageButton);
     group.appendChild(selectElementButton);
     group.appendChild(componentButton);
-    group.appendChild(launcherLockButtonEl);
-    group.appendChild(launcherPresetButtonEl);
-    group.appendChild(backButton);
+    group.appendChild(runActionButtonEl);
 
     bar.appendChild(launcherModeEl);
     bar.appendChild(divider1);
@@ -850,6 +1006,7 @@
     markIgnore(root);
     document.documentElement.appendChild(root);
 
+    setPendingAction("figma_page", "body", "待执行");
     refreshModeHint();
   }
 
