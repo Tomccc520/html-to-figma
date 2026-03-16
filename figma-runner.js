@@ -13,13 +13,24 @@
   const TOAST_ID = "__web2html_capture_toast__";
   const BUILTIN_CAPTURE_TOOLBAR_ID = "__figma_capture_toolbar_host__";
   const OPEN_URL_MESSAGE_TYPE = "WEB2HTML_OPEN_URL";
+  const VIEWPORT_PRESETS = [
+    { id: "current", label: "当前窗口", width: null, height: null },
+    { id: "desktop1080", label: "Desktop 1920×1080", width: 1920, height: 1080 },
+    { id: "desktop", label: "Desktop 1440×900", width: 1440, height: 900 },
+    { id: "tablet", label: "Tablet 834×1194", width: 834, height: 1194 },
+    { id: "mobile", label: "Mobile 390×844", width: 390, height: 844 }
+  ];
 
   let activeMode = "page";
   let activeSelector = "body";
+  let selectedViewportPresetId = "current";
   let toolbarMessageEl = null;
   let pageModeButtonEl = null;
   let elementModeButtonEl = null;
+  let viewportModeButtonEl = null;
+  let viewportPresetSelectEl = null;
   let executeButtonEl = null;
+  let stopElementPicker = null;
   let toastTimer = null;
 
   /**
@@ -27,6 +38,33 @@
    */
   function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 返回当前页面视口尺寸文案（含设备像素比）。
+   */
+  function getViewportSizeLabel(width = window.innerWidth, height = window.innerHeight) {
+    const safeWidth = Math.max(0, Math.round(width || 0));
+    const safeHeight = Math.max(0, Math.round(height || 0));
+    const dpr = Number(window.devicePixelRatio || 1).toFixed(2).replace(/\.00$/, "");
+    return `${safeWidth} x ${safeHeight} @${dpr}x`;
+  }
+
+  /**
+   * 根据预设 id 返回视口预设配置。
+   */
+  function getViewportPresetById(presetId) {
+    return VIEWPORT_PRESETS.find((item) => item.id === presetId) || VIEWPORT_PRESETS[0];
+  }
+
+  /**
+   * 获取当前视口模式目标尺寸。
+   */
+  function getViewportTargetSize() {
+    const preset = getViewportPresetById(selectedViewportPresetId);
+    const width = preset.width || Math.max(1, Math.round(window.innerWidth || 0));
+    const height = preset.height || Math.max(1, Math.round(window.innerHeight || 0));
+    return { preset, width, height };
   }
 
   /**
@@ -61,6 +99,56 @@
     }
     await wait(320);
     window.scrollTo(0, originalY);
+  }
+
+  /**
+   * 视口模式复制前锁定根节点尺寸，尽量只保留当前可视区域。
+   */
+  function lockViewportForCapture(targetWidth, targetHeight) {
+    const htmlEl = document.documentElement;
+    const bodyEl = document.body;
+    if (!htmlEl || !bodyEl) {
+      return () => {};
+    }
+
+    const prev = {
+      htmlOverflow: htmlEl.style.overflow,
+      htmlHeight: htmlEl.style.height,
+      htmlMaxHeight: htmlEl.style.maxHeight,
+      bodyOverflow: bodyEl.style.overflow,
+      bodyHeight: bodyEl.style.height,
+      bodyMaxHeight: bodyEl.style.maxHeight,
+      bodyMinHeight: bodyEl.style.minHeight,
+      bodyWidth: bodyEl.style.width,
+      bodyMaxWidth: bodyEl.style.maxWidth
+    };
+
+    const viewportWidth = `${Math.max(1, Math.round(targetWidth || window.innerWidth || 0))}px`;
+    const viewportHeight = `${Math.max(1, Math.round(targetHeight || window.innerHeight || 0))}px`;
+
+    htmlEl.style.overflow = "hidden";
+    htmlEl.style.height = viewportHeight;
+    htmlEl.style.maxHeight = viewportHeight;
+
+    bodyEl.style.overflow = "hidden";
+    bodyEl.style.height = viewportHeight;
+    bodyEl.style.maxHeight = viewportHeight;
+    bodyEl.style.minHeight = viewportHeight;
+    bodyEl.style.width = viewportWidth;
+    bodyEl.style.maxWidth = viewportWidth;
+
+    return () => {
+      htmlEl.style.overflow = prev.htmlOverflow;
+      htmlEl.style.height = prev.htmlHeight;
+      htmlEl.style.maxHeight = prev.htmlMaxHeight;
+
+      bodyEl.style.overflow = prev.bodyOverflow;
+      bodyEl.style.height = prev.bodyHeight;
+      bodyEl.style.maxHeight = prev.bodyMaxHeight;
+      bodyEl.style.minHeight = prev.bodyMinHeight;
+      bodyEl.style.width = prev.bodyWidth;
+      bodyEl.style.maxWidth = prev.bodyMaxWidth;
+    };
   }
 
   /**
@@ -215,7 +303,11 @@
       return;
     }
 
-    const modeText = activeMode === "page" ? "整页模式" : "元素模式";
+    const modeText = activeMode === "page"
+      ? "整页模式"
+      : activeMode === "element"
+        ? "元素模式"
+        : "视口模式";
     const selectorText = activeMode === "element" && activeSelector !== "body"
       ? `，目标：${activeSelector.slice(0, 56)}`
       : "";
@@ -233,9 +325,18 @@
     if (elementModeButtonEl) {
       elementModeButtonEl.style.background = activeMode === "element" ? "rgba(255,255,255,.22)" : "transparent";
     }
+    if (viewportModeButtonEl) {
+      viewportModeButtonEl.style.background = activeMode === "viewport" ? "rgba(255,255,255,.22)" : "transparent";
+    }
     if (executeButtonEl) {
-      executeButtonEl.querySelector("[data-toolbar-label]").textContent =
-        activeMode === "page" ? "执行 复制整页" : "执行 复制元素";
+      executeButtonEl.querySelector("[data-toolbar-label]").textContent = activeMode === "page"
+        ? "执行 复制整页"
+        : activeMode === "element"
+          ? "执行 复制元素"
+          : "执行 复制视口";
+    }
+    if (viewportPresetSelectEl) {
+      viewportPresetSelectEl.style.opacity = activeMode === "viewport" ? "1" : ".85";
     }
     updateToolbarMessage();
   }
@@ -304,6 +405,59 @@
   }
 
   /**
+   * 创建视口尺寸预设下拉框。
+   */
+  function createViewportPresetSelect() {
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = [
+      "display:inline-flex",
+      "align-items:center",
+      "height:24px",
+      "padding:0 6px",
+      "border-radius:6px",
+      "background:rgba(255,255,255,.08)"
+    ].join(";");
+
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", "视口尺寸预设");
+    select.style.cssText = [
+      "height:20px",
+      "border:none",
+      "outline:none",
+      "background:transparent",
+      "color:rgba(255,255,255,.92)",
+      "font-size:12px",
+      "font-family:inherit",
+      "cursor:pointer",
+      "max-width:124px"
+    ].join(";");
+
+    for (const preset of VIEWPORT_PRESETS) {
+      const option = document.createElement("option");
+      option.value = preset.id;
+      option.textContent = preset.label;
+      option.style.color = "#0f172a";
+      select.appendChild(option);
+    }
+
+    select.value = selectedViewportPresetId;
+    select.addEventListener("change", () => {
+      selectedViewportPresetId = select.value;
+      const target = getViewportTargetSize();
+      const isWidthMismatch = Boolean(target.preset.width)
+        && Math.abs(Math.round(window.innerWidth || 0) - target.width) >= 4;
+      const hintText = isWidthMismatch ? "建议先切设备模式再执行" : "";
+      updateToolbarMessage(`预设：${target.preset.label} (${getViewportSizeLabel(target.width, target.height)})${hintText ? `，${hintText}` : ""}`);
+      setTimeout(() => updateToolbarMessage(), 1600);
+    });
+
+    wrapper.appendChild(select);
+    markIgnore(wrapper);
+    viewportPresetSelectEl = select;
+    return wrapper;
+  }
+
+  /**
    * 设置图标按钮文案，不影响图标结构。
    */
   function setIconButtonLabel(button, label) {
@@ -331,6 +485,17 @@
   }
 
   /**
+   * 结束元素选择流程并清理监听。
+   */
+  function cancelElementPicker() {
+    if (typeof stopElementPicker === "function") {
+      stopElementPicker();
+      stopElementPicker = null;
+    }
+    removePickerUI();
+  }
+
+  /**
    * 显示全局轻提示，不受黑条位置影响。
    */
   function showCaptureToast(message, isError = false, durationMs = 2400, action = null, placement = "top") {
@@ -341,7 +506,7 @@
       toast.style.cssText = [
         "position:fixed",
         "left:50%",
-        "top:18px",
+        "top:68px",
         "transform:translate(-50%,-8px)",
         "z-index:2147483647",
         "max-width:min(560px,calc(100vw - 24px))",
@@ -361,7 +526,7 @@
         "gap:10px",
         "text-align:left",
         "transition:opacity .18s ease, transform .18s ease",
-        "pointer-events:auto"
+        "pointer-events:none"
       ].join(";");
       markIgnore(toast);
       document.documentElement.appendChild(toast);
@@ -373,7 +538,8 @@
     messageEl.style.cssText = "display:inline-block;max-width:100%;";
     toast.appendChild(messageEl);
 
-    if (action?.label && typeof action.onClick === "function") {
+    const hasAction = action?.label && typeof action.onClick === "function";
+    if (hasAction) {
       const actionButton = document.createElement("button");
       actionButton.type = "button";
       actionButton.textContent = action.label;
@@ -397,12 +563,13 @@
       toast.appendChild(actionButton);
     }
 
+    toast.style.pointerEvents = hasAction ? "auto" : "none";
     toast.style.background = isError ? "rgba(180,35,24,.95)" : "rgba(6,118,71,.95)";
     if (placement === "center") {
       toast.style.top = "50%";
       toast.style.transform = "translate(-50%,-50%)";
     } else {
-      toast.style.top = "18px";
+      toast.style.top = "68px";
       toast.style.transform = "translate(-50%,0)";
     }
     toast.style.opacity = "1";
@@ -528,6 +695,7 @@
     document.addEventListener("mousemove", onMove, true);
     document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeydown, true);
+    return cleanup;
   }
 
   /**
@@ -620,7 +788,7 @@
       "display:flex",
       "align-items:center",
       "width:max-content",
-      "min-width:360px",
+      "min-width:560px",
       "height:40px",
       "padding:0 8px",
       "border-radius:13px",
@@ -652,6 +820,7 @@
       label: "整个屏幕",
       iconPath: "M17 6a2 2 0 0 1 2 2v8l-.01.204a2 2 0 0 1-1.786 1.785L17 18H7l-.204-.01a2 2 0 0 1-1.785-1.786L5 16V8a2 2 0 0 1 2-2zM6 16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5H6zm1-9a1 1 0 0 0-.995.897L6 8v2h12V8a1 1 0 0 0-1-1zm.5 1a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1m2 0a.5.5 0 1 1 0 1 .5.5 0 0 1 0-1",
       onClick: () => {
+        cancelElementPicker();
         activeMode = "page";
         activeSelector = "body";
         updateModeButtonsUI();
@@ -662,12 +831,14 @@
       label: "选择元素",
       iconPath: "M9.321 5.532a.5.5 0 0 1 .653.27l.777 1.876c.102.245-.039.524-.285.626s-.537.002-.639-.244L9.05 6.186a.5.5 0 0 1 .271-.654m-1.26 4.295L6.186 9.05a.5.5 0 0 0-.383.924l1.875.777c.246.101.524-.04.626-.285.102-.246.003-.537-.243-.64m-.383 3.422-1.875.776a.5.5 0 1 0 .383.924l1.875-.777c.246-.102.345-.393.243-.639s-.38-.386-.626-.284m2.149 2.69-.777 1.874a.5.5 0 0 0 .924.383l.777-1.875c.102-.245-.04-.524-.285-.626s-.537-.002-.639.244m6.495-5.188 1.874-.777a.5.5 0 1 0-.382-.924l-1.875.777c-.246.101-.346.393-.244.639s.381.386.627.285m-2.15-2.69.777-1.875a.5.5 0 1 0-.924-.383l-.776 1.875c-.102.245.039.524.284.626.246.102.538.002.64-.244m-1.82 3.002a1 1 0 0 0-1.288 1.288l2.25 6a1 1 0 0 0 1.906-.109l.605-2.418 2.418-.604a1 1 0 0 0 .108-1.907zm3.94 3.614L15 15l-.323 1.29L14.25 18l-.618-1.65-1.166-3.108L12 12l1.243.466 3.108 1.165L18 14.25z",
       onClick: () => {
+        cancelElementPicker();
         activeMode = "element";
         activeSelector = "body";
         updateModeButtonsUI();
         updateToolbarMessage("选择元素中");
-        startElementPicker(
+        stopElementPicker = startElementPicker(
           (selector) => {
+            stopElementPicker = null;
             activeMode = "element";
             activeSelector = selector || "body";
             updateModeButtonsUI();
@@ -675,6 +846,7 @@
             flashTarget(activeSelector, 700);
           },
           () => {
+            stopElementPicker = null;
             updateToolbarMessage("已取消选择");
             setTimeout(() => updateToolbarMessage(), 1000);
           }
@@ -682,27 +854,49 @@
       }
     });
 
+    viewportModeButtonEl = createIconButton({
+      label: "视口尺寸",
+      iconPath: "M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5v1h2a.5.5 0 0 1 0 1H9a.5.5 0 0 1 0-1h2v-1H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8h14V5a1 1 0 0 0-1-1zm13 10H5v1a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1z",
+      onClick: () => {
+        cancelElementPicker();
+        activeMode = "viewport";
+        activeSelector = "body";
+        const target = getViewportTargetSize();
+        updateModeButtonsUI();
+        updateToolbarMessage(`预设：${target.preset.label} (${getViewportSizeLabel(target.width, target.height)})`);
+      }
+    });
+
+    const viewportPresetSelectWrap = createViewportPresetSelect();
+
     executeButtonEl = createIconButton({
       label: "执行 复制整页",
       iconPath: "M8.5 6.5a1 1 0 0 1 1.555-.832l6 4a1 1 0 0 1 0 1.664l-6 4A1 1 0 0 1 8.5 14.5z",
       onClick: async () => {
-        const selector = activeMode === "page" ? "body" : activeSelector;
+        const selector = activeMode === "element" ? activeSelector : "body";
         if (activeMode === "element" && (!selector || selector === "body")) {
           updateToolbarMessage("请先选择元素");
           setTimeout(() => updateToolbarMessage(), 1200);
           return;
         }
 
+        cancelElementPicker();
         executeButtonEl.disabled = true;
         updateToolbarMessage("准备执行");
         const clearSuppressor = suppressBuiltInCaptureToolbar(12000);
+        let releaseViewportLock = null;
 
         try {
           if (activeMode === "element") {
             await flashTarget(selector, 850);
-          } else {
+          } else if (activeMode === "page") {
             updateToolbarMessage("整页预热中（自动滚动）");
             await warmupPageByScroll();
+          } else {
+            const target = getViewportTargetSize();
+            updateToolbarMessage(`视口模式：${target.preset.label} (${getViewportSizeLabel(target.width, target.height)})`);
+            releaseViewportLock = lockViewportForCapture(target.width, target.height);
+            await wait(120);
           }
 
           updateToolbarMessage("资源检查中");
@@ -741,6 +935,9 @@
           showCaptureToast("复制失败，请刷新页面后重试", true, 3200);
           pulseExecuteButton(false);
         } finally {
+          if (typeof releaseViewportLock === "function") {
+            releaseViewportLock();
+          }
           executeButtonEl.disabled = false;
           clearSuppressor();
           removeBuiltInCaptureToolbar();
@@ -754,7 +951,7 @@
       ariaLabel: "关闭",
       iconPath: "M17.354 6.646a.5.5 0 0 1 0 .708L12.707 12l4.647 4.646a.5.5 0 0 1-.708.708L12 12.707l-4.646 4.647a.5.5 0 0 1-.708-.708L11.293 12 6.646 7.354a.5.5 0 0 1 .708-.707L12 11.293l4.646-4.647a.5.5 0 0 1 .708 0",
       onClick: () => {
-        removePickerUI();
+        cancelElementPicker();
         const flash = document.getElementById(FLASH_BOX_ID);
         if (flash) {
           flash.remove();
@@ -771,6 +968,8 @@
 
     group.appendChild(pageModeButtonEl);
     group.appendChild(elementModeButtonEl);
+    group.appendChild(viewportModeButtonEl);
+    group.appendChild(viewportPresetSelectWrap);
     group.appendChild(executeButtonEl);
 
     bar.appendChild(toolbarMessageEl);

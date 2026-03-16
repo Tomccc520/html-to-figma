@@ -3,6 +3,12 @@
   "name": "Web to Design",
   "version": "1.0.5",
   "description": "智能捕获网页结构与样式，快速生成可编辑设计数据。© Tomda (https://www.tomda.top) / UIED技术团队 (https://fsuied.com)",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "activeTab",
     "scripting",
@@ -14,7 +20,11 @@
   ],
   "action": {
     "default_title": "Web to Design",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
   },
   "background": {
     "service_worker": "background.js"
