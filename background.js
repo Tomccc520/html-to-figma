@@ -6,7 +6,7 @@
  */
 
 const WORLD = "ISOLATED";
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.5";
 const JSON_CAPTURE_ENGINE_FILE = "content.js";
 const JSON_CAPTURE_RUNNER_FILE = "runner.js";
 const FIGMA_CAPTURE_ENGINE_FILE = "capture.js";
@@ -16,6 +16,7 @@ const TOOLBAR_FILE = "inpage-toolbar.js";
 const MESSAGE_TYPES = {
   START_CAPTURE: "WEB2HTML_START_CAPTURE",
   START_FIGMA_CLIPBOARD_CAPTURE: "WEB2HTML_START_FIGMA_CLIPBOARD_CAPTURE",
+  OPEN_URL: "WEB2HTML_OPEN_URL",
   INJECT_TOOLBAR: "WEB2HTML_INJECT_TOOLBAR",
   FETCH_ASSET: "WEB2HTML_FETCH_ASSET",
   FETCH_ASSET_LEGACY: "FIGMA_CAPTURE_FETCH_ASSET",
@@ -461,6 +462,46 @@ async function handleInjectToolbar(message, sender, sendResponse) {
 }
 
 /**
+ * 处理打开外部链接请求，统一由后台创建新标签页，避免页面弹窗被拦截。
+ */
+async function handleOpenUrl(message, sendResponse) {
+  try {
+    const rawUrl = String(message?.url || "").trim();
+    if (!rawUrl) {
+      throw new Error("链接为空");
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(rawUrl);
+    } catch {
+      throw new Error("链接格式无效");
+    }
+
+    if (!/^https?:$/.test(parsedUrl.protocol)) {
+      throw new Error("仅支持 http/https 链接");
+    }
+
+    const tab = await chrome.tabs.create({
+      url: parsedUrl.toString(),
+      active: true
+    });
+
+    sendResponse({
+      ok: true,
+      tabId: tab?.id || null,
+      url: parsedUrl.toString()
+    });
+  } catch (error) {
+    console.error("Open url failed:", error);
+    sendResponse({
+      ok: false,
+      error: `[Web to Design v${APP_VERSION}] ${String(error?.message || error)}`
+    });
+  }
+}
+
+/**
  * 处理资源代理抓取请求。
  */
 async function handleFetchAsset(message, sendResponse) {
@@ -556,6 +597,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === MESSAGE_TYPES.INJECT_TOOLBAR) {
     handleInjectToolbar(message, sender, sendResponse);
+    return true;
+  }
+
+  if (message.type === MESSAGE_TYPES.OPEN_URL) {
+    handleOpenUrl(message, sendResponse);
     return true;
   }
 

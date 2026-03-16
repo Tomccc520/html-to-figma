@@ -54,7 +54,7 @@ function setBusy(isBusy) {
   downloadJsonBtnEl.disabled = isBusy;
   copyLastJsonBtnEl.disabled = isBusy;
   injectToolbarBtnEl.disabled = isBusy;
-  copyToFigmaBtnEl.textContent = isBusy ? "处理中..." : "复制到 Figma";
+  copyToFigmaBtnEl.textContent = isBusy ? "处理中..." : "打开悬浮工具条（推荐）";
   downloadJsonBtnEl.textContent = isBusy ? "处理中..." : "下载 JSON 文件";
 }
 
@@ -162,8 +162,8 @@ async function captureAndCopyToFigma() {
     }
 
     if (response?.result?.pending) {
-      setStatus("已触发复制流程，页面仍在处理，请稍后到 Figma 画布按 Command + V 粘贴。", false, true);
-      showToast("复制流程已启动");
+      setStatus("悬浮工具条已打开，请在网页中选择“整页/元素”并点击执行，再到 Figma 粘贴。", false, true);
+      showToast("黑色悬浮条已打开");
     } else {
       setStatus("复制成功。请切换到 Figma 画布后按 Command + V 粘贴。", false, true);
       showToast("已复制到 Figma");
