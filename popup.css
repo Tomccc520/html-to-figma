@@ -88,30 +88,6 @@ h1 {
   gap: 8px;
 }
 
-.actions-advanced {
-  margin-top: 8px;
-}
-
-.advanced {
-  margin-top: 8px;
-  border: 1px solid #dce3ef;
-  border-radius: 10px;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.advanced > summary {
-  cursor: pointer;
-  color: #344054;
-  font-size: 12px;
-  font-weight: 600;
-  user-select: none;
-}
-
-.advanced > summary::marker {
-  color: #667085;
-}
-
 button {
   width: 100%;
   border: 0;

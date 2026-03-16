@@ -6,7 +6,7 @@
  */
 
 const WORLD = "ISOLATED";
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.0.3";
 const JSON_CAPTURE_ENGINE_FILE = "content.js";
 const JSON_CAPTURE_RUNNER_FILE = "runner.js";
 const FIGMA_CAPTURE_ENGINE_FILE = "capture.js";
@@ -16,8 +16,6 @@ const TOOLBAR_FILE = "inpage-toolbar.js";
 const MESSAGE_TYPES = {
   START_CAPTURE: "WEB2HTML_START_CAPTURE",
   START_FIGMA_CLIPBOARD_CAPTURE: "WEB2HTML_START_FIGMA_CLIPBOARD_CAPTURE",
-  START_COMPONENT_CAPTURE: "WEB2HTML_START_COMPONENT_CAPTURE",
-  SET_VIEWPORT_PRESET: "WEB2HTML_SET_VIEWPORT_PRESET",
   INJECT_TOOLBAR: "WEB2HTML_INJECT_TOOLBAR",
   FETCH_ASSET: "WEB2HTML_FETCH_ASSET",
   FETCH_ASSET_LEGACY: "FIGMA_CAPTURE_FETCH_ASSET",
@@ -328,26 +326,7 @@ async function getActiveTab() {
 /**
  * 运行 JSON 采集流程，返回结构化设计数据。
  */
-async function runJsonCapture(tabId, captureOptions = {}) {
-  const nextOptions = {
-    selector: typeof captureOptions.selector === "string" ? captureOptions.selector : "body",
-    maxDepth: Number.isFinite(captureOptions.maxDepth) ? captureOptions.maxDepth : 20,
-    maxNodes: Number.isFinite(captureOptions.maxNodes) ? captureOptions.maxNodes : 5000,
-    embedAssets: captureOptions.embedAssets !== false,
-    assetConcurrency: Number.isFinite(captureOptions.assetConcurrency)
-      ? captureOptions.assetConcurrency
-      : DEFAULT_CONCURRENCY
-  };
-
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    world: WORLD,
-    func: (runtimeOptions) => {
-      window.__WEB2HTML_JSON_CAPTURE_OPTIONS__ = runtimeOptions;
-    },
-    args: [nextOptions]
-  });
-
+async function runJsonCapture(tabId) {
   await injectScriptFile(tabId, JSON_CAPTURE_ENGINE_FILE);
   await sleep(120);
 
@@ -363,23 +342,7 @@ async function runJsonCapture(tabId, captureOptions = {}) {
 /**
  * 运行 Figma 剪贴板采集流程，直接生成 Figma 可粘贴的数据。
  */
-async function runFigmaClipboardCapture(tabId, captureOptions = {}) {
-  const nextOptions = {
-    selector: typeof captureOptions.selector === "string" ? captureOptions.selector : "body",
-    delayMs: Number.isFinite(captureOptions.delayMs) ? captureOptions.delayMs : 0,
-    verbose: Boolean(captureOptions.verbose),
-    mode: captureOptions.mode || "smart"
-  };
-
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    world: WORLD,
-    func: (runtimeOptions) => {
-      window.__WEB2HTML_FIGMA_CAPTURE_OPTIONS__ = runtimeOptions;
-    },
-    args: [nextOptions]
-  });
-
+async function runFigmaClipboardCapture(tabId) {
   await injectScriptFile(tabId, FIGMA_CAPTURE_ENGINE_FILE);
   await sleep(140);
 
@@ -410,90 +373,6 @@ function saveResult(result) {
 }
 
 /**
- * 规范化组件名称，尽量从页面标题生成稳定且可读的标识。
- */
-function normalizeComponentName(rawName) {
-  const cleaned = String(rawName || "web-page")
-    .trim()
-    .replace(/[^\w\u4e00-\u9fa5\s-]/g, " ")
-    .replace(/\s+/g, " ")
-    .slice(0, 48);
-
-  if (!cleaned) {
-    return "web-page-component";
-  }
-  return `${cleaned.replace(/\s+/g, "-").toLowerCase()}-component`;
-}
-
-/**
- * 将文本编码并计算 SHA-256 哈希，用于组件数据的来源指纹。
- */
-async function sha256Hex(input) {
-  const text = String(input || "");
-  const encoded = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/**
- * 基于采集结果生成来源哈希，便于后续兼容升级与数据去重。
- */
-async function buildSourceHash(captureResult) {
-  const hashInput = JSON.stringify({
-    url: captureResult?.meta?.url || "",
-    title: captureResult?.meta?.title || "",
-    selector: captureResult?.options?.selector || "body",
-    stats: captureResult?.stats || {},
-    tree: captureResult?.tree || null
-  });
-  return sha256Hex(hashInput);
-}
-
-/**
- * 将普通采集结果包装为组件化结构，便于后续在设计流程中复用。
- */
-async function buildComponentPayload(captureResult, options = {}) {
-  const sourceTitle = captureResult?.meta?.title || "Web Page";
-  const sourceUrl = captureResult?.meta?.url || "";
-  const componentName = normalizeComponentName(sourceTitle);
-  const sourceHash = await buildSourceHash(captureResult);
-  const selector = typeof options.selector === "string" ? options.selector : "body";
-  const mode = typeof options.mode === "string" ? options.mode : "component";
-  const viewportPreset = options.viewportPreset || null;
-
-  return {
-    app: "Web to Design",
-    version: APP_VERSION,
-    format: "web2html.component+json",
-    schemaVersion: "1.0.0",
-    exportedAt: new Date().toISOString(),
-    components: [
-      {
-        id: `${componentName}-${Date.now()}`,
-        name: componentName,
-        title: sourceTitle,
-        source: {
-          url: sourceUrl,
-          title: sourceTitle
-        },
-        sourceHash,
-        captureMode: mode,
-        selector,
-        viewportPreset,
-        stats: captureResult?.stats || {},
-        options: captureResult?.options || {},
-        frame: captureResult?.tree?.position || null,
-        tree: captureResult?.tree || null,
-        elements: captureResult?.elements || [],
-        assets: captureResult?.assets || { urls: [], embedded: {} }
-      }
-    ]
-  };
-}
-
-/**
  * 注入网页悬浮工具条。
  */
 async function injectToolbar(tabId) {
@@ -510,15 +389,7 @@ async function handleStartCapture(message, sendResponse) {
       throw new Error("当前没有可采集的标签页");
     }
 
-    const captureResult = await runJsonCapture(activeTab.id, {
-      selector: message?.selector || "body",
-      maxDepth: Number.isFinite(message?.maxDepth) ? message.maxDepth : 20,
-      maxNodes: Number.isFinite(message?.maxNodes) ? message.maxNodes : 5000,
-      embedAssets: message?.embedAssets !== false,
-      assetConcurrency: Number.isFinite(message?.assetConcurrency)
-        ? message.assetConcurrency
-        : DEFAULT_CONCURRENCY
-    });
+    const captureResult = await runJsonCapture(activeTab.id);
     if (!captureResult) {
       throw new Error("采集结果为空，请刷新页面后重试");
     }
@@ -546,19 +417,14 @@ async function handleStartCapture(message, sendResponse) {
 /**
  * 处理“复制到 Figma”指令，走参考仓库的剪贴板编码链路。
  */
-async function handleStartFigmaClipboardCapture(message, sendResponse) {
+async function handleStartFigmaClipboardCapture(sendResponse) {
   try {
     const activeTab = await getActiveTab();
     if (!activeTab?.id) {
       throw new Error("当前没有可采集的标签页");
     }
 
-    const captureResult = await runFigmaClipboardCapture(activeTab.id, {
-      selector: message?.selector || "body",
-      delayMs: Number.isFinite(message?.delayMs) ? message.delayMs : 0,
-      verbose: Boolean(message?.verbose),
-      mode: message?.mode || "smart"
-    });
+    const captureResult = await runFigmaClipboardCapture(activeTab.id);
     if (captureResult?.success === false) {
       throw new Error(captureResult?.error || "复制到 Figma 失败");
     }
@@ -573,98 +439,6 @@ async function handleStartFigmaClipboardCapture(message, sendResponse) {
       ok: false,
       error: `[Web to Design v${APP_VERSION}] ${String(error?.message || error)}`,
       stack: error?.stack || ""
-    });
-  }
-}
-
-/**
- * 处理“复制组件 JSON”指令，输出组件化结构的采集结果。
- */
-async function handleStartComponentCapture(message, sendResponse) {
-  try {
-    const activeTab = await getActiveTab();
-    if (!activeTab?.id) {
-      throw new Error("当前没有可采集的标签页");
-    }
-
-    const selector = typeof message?.selector === "string"
-      ? message.selector
-      : "body";
-    const mode = typeof message?.mode === "string"
-      ? message.mode
-      : "component";
-    const viewportPreset = message?.viewportPreset || null;
-
-    const captureResult = await runJsonCapture(activeTab.id, {
-      selector,
-      maxDepth: 20,
-      maxNodes: 5000,
-      embedAssets: true,
-      assetConcurrency: DEFAULT_CONCURRENCY
-    });
-    if (!captureResult) {
-      throw new Error("采集结果为空，请刷新页面后重试");
-    }
-
-    const componentPayload = await buildComponentPayload(captureResult, {
-      selector,
-      mode,
-      viewportPreset
-    });
-    const componentJson = JSON.stringify(componentPayload, null, 2);
-    sendResponse({
-      ok: true,
-      json: componentJson
-    });
-  } catch (error) {
-    console.error("Component capture failed:", error);
-    sendResponse({
-      ok: false,
-      error: `[Web to Design v${APP_VERSION}] ${String(error?.message || error)}`,
-      stack: error?.stack || ""
-    });
-  }
-}
-
-/**
- * 应用视口预设到当前浏览器窗口，实现真实窗口尺寸切换。
- */
-async function handleSetViewportPreset(message, sender, sendResponse) {
-  try {
-    const width = Number(message?.width);
-    const height = Number(message?.height);
-    if (!Number.isFinite(width) || !Number.isFinite(height)) {
-      throw new Error("预设尺寸参数无效");
-    }
-
-    const tabWindowId = sender?.tab?.windowId;
-    let windowId = Number.isFinite(tabWindowId) ? tabWindowId : null;
-
-    if (!windowId) {
-      const activeTab = await getActiveTab();
-      windowId = activeTab?.windowId;
-    }
-    if (!windowId) {
-      throw new Error("无法定位当前浏览器窗口");
-    }
-
-    const updatedWindow = await chrome.windows.update(windowId, {
-      width: Math.max(640, Math.round(width)),
-      height: Math.max(480, Math.round(height)),
-      focused: true
-    });
-
-    sendResponse({
-      ok: true,
-      windowId: updatedWindow?.id || windowId,
-      width: updatedWindow?.width || Math.round(width),
-      height: updatedWindow?.height || Math.round(height)
-    });
-  } catch (error) {
-    console.error("Set viewport preset failed:", error);
-    sendResponse({
-      ok: false,
-      error: `[Web to Design v${APP_VERSION}] ${String(error?.message || error)}`
     });
   }
 }
@@ -776,17 +550,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === MESSAGE_TYPES.START_FIGMA_CLIPBOARD_CAPTURE) {
-    handleStartFigmaClipboardCapture(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === MESSAGE_TYPES.START_COMPONENT_CAPTURE) {
-    handleStartComponentCapture(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === MESSAGE_TYPES.SET_VIEWPORT_PRESET) {
-    handleSetViewportPreset(message, sender, sendResponse);
+    handleStartFigmaClipboardCapture(sendResponse);
     return true;
   }
 

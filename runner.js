@@ -7,19 +7,6 @@
 
 (async () => {
   /**
-   * 读取后台注入的 JSON 采集参数，并在读取后清理全局变量。
-   */
-  function readRuntimeOptions() {
-    const options = window.__WEB2HTML_JSON_CAPTURE_OPTIONS__ || {};
-    try {
-      delete window.__WEB2HTML_JSON_CAPTURE_OPTIONS__;
-    } catch {
-      window.__WEB2HTML_JSON_CAPTURE_OPTIONS__ = undefined;
-    }
-    return options;
-  }
-
-  /**
    * 等待指定毫秒，给页面渲染和资源加载预留时间。
    */
   function wait(ms) {
@@ -89,26 +76,17 @@
       throw new Error("window.web2html.captureForDesign 不存在，请确认 content.js 已注入");
     }
 
-    const runtimeOptions = readRuntimeOptions();
-    const selector = typeof runtimeOptions.selector === "string" ? runtimeOptions.selector : "body";
-    const maxDepth = Number.isFinite(runtimeOptions.maxDepth) ? runtimeOptions.maxDepth : 20;
-    const maxNodes = Number.isFinite(runtimeOptions.maxNodes) ? runtimeOptions.maxNodes : 5000;
-    const embedAssets = runtimeOptions.embedAssets !== false;
-    const assetConcurrency = Number.isFinite(runtimeOptions.assetConcurrency)
-      ? runtimeOptions.assetConcurrency
-      : 8;
-
     await warmupPageByScroll();
     await waitForImages();
     await waitForFonts();
     await wait(500);
 
     return captureForDesign({
-      selector,
-      maxDepth,
-      maxNodes,
-      embedAssets,
-      assetConcurrency
+      selector: "body",
+      maxDepth: 20,
+      maxNodes: 5000,
+      embedAssets: true,
+      assetConcurrency: 8
     });
   }
 

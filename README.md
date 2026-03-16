@@ -1,26 +1,21 @@
-
+/**
+ * @copyright Tomda (https://www.tomda.top)
+ * @copyright UIED技术团队 (https://fsuied.com)
+ * @author UIED技术团队
+ * @createDate 2026-03-10
+ */
 
 # Web to Design Chrome插件
 
 将网页内容捕获并转换为可编辑设计数据（面向 Figma/设计系统流程）。
 
-## 项目介绍 / Project Overview
-
-本项目是一个 Chrome 扩展，用于提取网页的 DOM 结构、布局和样式信息，并导出为可用于设计系统流程的结构化 JSON 数据。适合用于网页还原、设计协作与前端资产整理等场景。
-
-This project is a Chrome extension that captures webpage DOM structure, layout, and style metadata, then exports structured JSON for design-system workflows. It is suitable for web-to-design conversion, design collaboration, and frontend asset organization.
-
-## 教程链接 / Tutorial
-
-- 飞书教程（Feishu Wiki）：https://facomqeet1v.feishu.cn/wiki/LJL6wBolJiZPBEkFLhEc9ka2nxc
-
 ## 功能特性
 
-- 捕获网页 DOM 结构、布局和核心样式
-- 支持树结构 + 扁平结构双输出
-- 支持跨域图片代理抓取与资源嵌入
-- 一键下载 JSON 文件（可用于二次转换）
-- 支持注入网页悬浮采集工具条
+- 🎨 捕获网页 DOM 结构、布局和核心样式
+- 🧩 支持树结构 + 扁平结构双输出
+- 🖼️ 支持跨域图片代理抓取与资源嵌入
+- 📥 一键下载 JSON 文件（可用于二次转换）
+- 🧰 支持注入网页悬浮采集工具条
 
 ## 安装方法
 

@@ -23,13 +23,6 @@ const MESSAGE_TYPES = {
   GET_RUNTIME_INFO: "WEB2HTML_GET_RUNTIME_INFO"
 };
 
-const BUTTON_TEXT = {
-  COPY_TO_FIGMA: "打开黑色悬浮条（推荐）",
-  DOWNLOAD_JSON: "下载 JSON 文件（备份）",
-  COPY_LAST_JSON: "仅复制最近一次 JSON",
-  INJECT_TOOLBAR: "注入网页悬浮工具条（旧版）"
-};
-
 const DEFAULT_CONCURRENCY = "8";
 const ALLOWED_CONCURRENCY = new Set(["4", "6", "8", "10", "12", "16", "20", "infinite"]);
 
@@ -61,10 +54,8 @@ function setBusy(isBusy) {
   downloadJsonBtnEl.disabled = isBusy;
   copyLastJsonBtnEl.disabled = isBusy;
   injectToolbarBtnEl.disabled = isBusy;
-  copyToFigmaBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.COPY_TO_FIGMA;
-  downloadJsonBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.DOWNLOAD_JSON;
-  copyLastJsonBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.COPY_LAST_JSON;
-  injectToolbarBtnEl.textContent = isBusy ? "处理中..." : BUTTON_TEXT.INJECT_TOOLBAR;
+  copyToFigmaBtnEl.textContent = isBusy ? "处理中..." : "复制到 Figma";
+  downloadJsonBtnEl.textContent = isBusy ? "处理中..." : "下载 JSON 文件";
 }
 
 /**
@@ -164,19 +155,22 @@ async function captureAndCopyToFigma() {
 
   try {
     const response = await sendMessage({
-      type: MESSAGE_TYPES.START_FIGMA_CLIPBOARD_CAPTURE,
-      selector: "body",
-      mode: "toolbar_only"
+      type: MESSAGE_TYPES.START_FIGMA_CLIPBOARD_CAPTURE
     });
     if (!response?.ok) {
       throw new Error(response?.error || "未知错误");
     }
 
-    setStatus("黑色悬浮条已打开。请在条内点击功能按钮后再开始采集。", false, true);
-    showToast("黑色悬浮条已打开");
+    if (response?.result?.pending) {
+      setStatus("已触发复制流程，页面仍在处理，请稍后到 Figma 画布按 Command + V 粘贴。", false, true);
+      showToast("复制流程已启动");
+    } else {
+      setStatus("复制成功。请切换到 Figma 画布后按 Command + V 粘贴。", false, true);
+      showToast("已复制到 Figma");
+    }
   } catch (error) {
-    setStatus(`打开黑色悬浮条失败：${String(error.message || error)}`, true);
-    showToast("打开失败，请刷新页面重试", true);
+    setStatus(`复制到 Figma 失败：${String(error.message || error)}`, true);
+    showToast("复制失败，请刷新页面重试", true);
   } finally {
     setBusy(false);
   }
