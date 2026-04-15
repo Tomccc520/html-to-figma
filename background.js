@@ -6,7 +6,7 @@
  */
 
 const WORLD = "ISOLATED";
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.0.7";
 const JSON_CAPTURE_ENGINE_FILE = "content.js";
 const JSON_CAPTURE_RUNNER_FILE = "runner.js";
 const FIGMA_CAPTURE_ENGINE_FILE = "capture.js";

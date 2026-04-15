@@ -195,6 +195,45 @@
   }
 
   /**
+   * 复制瞬间临时隐藏悬浮层，避免黑条/提示层进入复制结果。
+   */
+  function hideCaptureOverlaysForSnapshot() {
+    const ids = [
+      TOOLBAR_ID,
+      TOAST_ID,
+      PICKER_BOX_ID,
+      PICKER_TIP_ID,
+      FLASH_BOX_ID,
+      BUILTIN_CAPTURE_TOOLBAR_ID
+    ];
+
+    const states = [];
+    for (const id of ids) {
+      const node = document.getElementById(id);
+      if (!node) {
+        continue;
+      }
+      states.push({
+        node,
+        visibility: node.style.visibility,
+        opacity: node.style.opacity,
+        pointerEvents: node.style.pointerEvents
+      });
+      node.style.visibility = "hidden";
+      node.style.opacity = "0";
+      node.style.pointerEvents = "none";
+    }
+
+    return () => {
+      for (const item of states) {
+        item.node.style.visibility = item.visibility;
+        item.node.style.opacity = item.opacity;
+        item.node.style.pointerEvents = item.pointerEvents;
+      }
+    };
+  }
+
+  /**
    * 等待页面图片资源尽量加载完成，提升复制质量。
    */
   async function waitForImages() {
@@ -493,6 +532,22 @@
       stopElementPicker = null;
     }
     removePickerUI();
+  }
+
+  /**
+   * 返回到整页模式，便于快速撤销当前元素/视口操作。
+   */
+  function backToPageMode() {
+    cancelElementPicker();
+    const flash = document.getElementById(FLASH_BOX_ID);
+    if (flash) {
+      flash.remove();
+    }
+    activeMode = "page";
+    activeSelector = "body";
+    updateModeButtonsUI();
+    updateToolbarMessage("已返回整页模式");
+    setTimeout(() => updateToolbarMessage(), 1000);
   }
 
   /**
@@ -885,6 +940,7 @@
         updateToolbarMessage("准备执行");
         const clearSuppressor = suppressBuiltInCaptureToolbar(12000);
         let releaseViewportLock = null;
+        let restoreOverlays = null;
 
         try {
           if (activeMode === "element") {
@@ -905,6 +961,7 @@
           await wait(260);
 
           updateToolbarMessage("复制到剪贴板中");
+          restoreOverlays = hideCaptureOverlaysForSnapshot();
           const capturePromise = Promise.resolve(captureForDesign({ selector }));
           capturePromise.catch((error) => {
             console.error("[Web to Design] capture failed:", error);
@@ -935,6 +992,9 @@
           showCaptureToast("复制失败，请刷新页面后重试", true, 3200);
           pulseExecuteButton(false);
         } finally {
+          if (typeof restoreOverlays === "function") {
+            restoreOverlays();
+          }
           if (typeof releaseViewportLock === "function") {
             releaseViewportLock();
           }
@@ -952,19 +1012,28 @@
       iconPath: "M17.354 6.646a.5.5 0 0 1 0 .708L12.707 12l4.647 4.646a.5.5 0 0 1-.708.708L12 12.707l-4.646 4.647a.5.5 0 0 1-.708-.708L11.293 12 6.646 7.354a.5.5 0 0 1 .708-.707L12 11.293l4.646-4.647a.5.5 0 0 1 .708 0",
       onClick: () => {
         cancelElementPicker();
-        const flash = document.getElementById(FLASH_BOX_ID);
-        if (flash) {
-          flash.remove();
-        }
         const toolbar = document.getElementById(TOOLBAR_ID);
         if (toolbar) {
           toolbar.remove();
         }
       }
     });
+
+    const backButton = createIconButton({
+      label: "",
+      ariaLabel: "返回",
+      iconPath: "M15.354 5.646a.5.5 0 0 1 0 .708L9.707 12l5.647 5.646a.5.5 0 1 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0",
+      onClick: () => {
+        backToPageMode();
+      }
+    });
+    backButton.style.padding = "0";
+    backButton.style.width = "24px";
+    backButton.style.marginLeft = "8px";
+
     closeButton.style.padding = "0";
     closeButton.style.width = "24px";
-    closeButton.style.marginLeft = "8px";
+    closeButton.style.marginLeft = "4px";
 
     group.appendChild(pageModeButtonEl);
     group.appendChild(elementModeButtonEl);
@@ -976,8 +1045,10 @@
     bar.appendChild(divider1);
     bar.appendChild(group);
     bar.appendChild(divider2);
+    bar.appendChild(backButton);
     bar.appendChild(closeButton);
 
+    markIgnore(bar);
     root.replaceChildren(bar);
     updateModeButtonsUI();
   }
